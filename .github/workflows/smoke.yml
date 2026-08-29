@@ -1,0 +1,19 @@
+name: smoke
+on: [push, workflow_dispatch]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 语法检查
+        run: python -m py_compile excel2data.py tools/*.py
+      - name: 数据断言
+        run: python tools/test_data.py
+      - name: 网页冒烟
+        run: |
+          grep -q '</html>' index.html
+          grep -q 'window.SITE_DATA' data.js
+          grep -q 'CONFIG.privateKey' index.html
