@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="免费公益站统计合集(持续更新中):AI 中转公益站导航、状态、奖励与体验评分。">
+<meta name="theme-color" content="#4f7cff">
+<title>免费公益站统计合集 · 持续更新中</title>
+<style>
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --text:#1b1f24; --muted:#69707a;
+  --line:#e4e8ee; --accent:#3b6ef5; --accent-weak:#eaf0ff;
+  --ok-bg:#e5f6ec; --ok-tx:#177a3d; --dead-bg:#fdeaea; --dead-tx:#b3372f;
+  --unk-bg:#eef0f3; --unk-tx:#5c636e;
+  --b-top-bg:#f6edff; --b-top-tx:#7a3fd1; --b-hong-bg:#e7f0ff; --b-hong-tx:#2563eb;
+  --b-npc-bg:#eef0f3; --b-npc-tx:#5c636e; --b-la-bg:#fdeaea; --b-la-tx:#b3372f;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101317; --card:#191d23; --text:#e9ecf1; --muted:#9aa3ae;
+    --line:#2a3038; --accent:#6d95ff; --accent-weak:#20304d;
+    --ok-bg:#12301e; --ok-tx:#5ad188; --dead-bg:#38191a; --dead-tx:#f08d84;
+    --unk-bg:#252a31; --unk-tx:#9aa3ae;
+    --b-top-bg:#2c2140; --b-top-tx:#c39bf5; --b-hong-bg:#1c2a45; --b-hong-tx:#8fb2ff;
+    --b-npc-bg:#252a31; --b-npc-tx:#9aa3ae; --b-la-bg:#38191a; --b-la-tx:#f08d84;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:15px/1.6 system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+.wrap{max-width:980px; margin:0 auto; padding:0 14px 40px}
+header.top{padding:26px 2px 14px}
+header.top h1{
+  margin:0 0 6px; font-size:24px; line-height:1.3; letter-spacing:.5px;
+}
+header.top .sub{margin:0; color:var(--muted); font-size:13px}
+header.top .sub b{color:var(--accent); font-weight:600}
+.toolbar{
+  position:sticky; top:0; z-index:10; margin:0 -14px 14px; padding:10px 14px 8px;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+#q{
+  width:100%; padding:10px 14px; border-radius:12px; border:1px solid var(--line);
+  background:var(--card); color:var(--text); font-size:15px; outline:none;
+}
+#q:focus{border-color:var(--accent)}
+.chips{display:flex; gap:8px; overflow-x:auto; padding:8px 2px 2px; scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto; padding:5px 13px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--muted); font-size:13px; cursor:pointer;
+  user-select:none; -webkit-tap-highlight-color:transparent;
+}
+.chip .n{opacity:.65; font-size:12px; margin-left:3px}
+.chip.on{background:var(--accent-weak); border-color:var(--accent); color:var(--accent); font-weight:600}
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px}
+@media (max-width:400px){.grid{grid-template-columns:1fr}}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  padding:14px 14px 12px; display:flex; flex-direction:column; gap:10px;
+}
+.card-head{display:flex; align-items:center; flex-wrap:wrap; gap:6px}
+.card-head h2{margin:0; font-size:17px; line-height:1.35; margin-right:2px; word-break:break-all}
+.card-head .date{margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap}
+.badge{
+  display:inline-block; padding:1.5px 9px; border-radius:999px;
+  font-size:12px; font-weight:600; white-space:nowrap;
+}
+.b-ok{background:var(--ok-bg); color:var(--ok-tx)}
+.b-dead{background:var(--dead-bg); color:var(--dead-tx)}
+.b-unk{background:var(--unk-bg); color:var(--unk-tx)}
+.r-顶级{background:var(--b-top-bg); color:var(--b-top-tx)}
+.r-夯{background:var(--b-hong-bg); color:var(--b-hong-tx)}
+.r-NPC{background:var(--b-npc-bg); color:var(--b-npc-tx)}
+.r-拉{background:var(--b-la-bg); color:var(--b-la-tx)}
+.fields{margin:0; display:flex; flex-direction:column; gap:5px; flex:1}
+.f{display:flex; gap:10px; font-size:13.5px}
+.f .k{
+  flex:0 0 58px; color:var(--muted); font-size:12.5px; line-height:1.7;
+}
+.f .v{flex:1; min-width:0; white-space:pre-line; word-break:break-word}
+.actions{display:flex; gap:8px; margin-top:2px}
+.btn{
+  display:flex; align-items:center; justify-content:center; gap:4px;
+  padding:9px 14px; border-radius:11px; border:1px solid var(--line);
+  background:transparent; color:var(--text); font-size:14px; font-weight:600;
+  text-decoration:none; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.btn:active{transform:scale(.97)}
+.btn.primary{flex:1.6; background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.copy{flex:1; color:var(--muted)}
+.btn.copy.done{color:var(--ok-tx); border-color:var(--ok-tx)}
+.empty{
+  text-align:center; color:var(--muted); padding:60px 0; font-size:14px;
+}
+footer{margin-top:30px; color:var(--muted); font-size:12.5px; line-height:1.8}
+footer code{background:var(--accent-weak); color:var(--accent); padding:1px 6px; border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>免费公益站统计合集 <span style="font-size:13px;color:var(--muted);font-weight:400">持续更新中</span></h1>
+    <p class="sub">共 <b>32</b> 站 · 有效 <b>18</b> 站 · 失效/无效 <b>11</b> 站 · 最近验证 <b>8.29</b></p>
+  </header>
+
+  <div class="toolbar">
+    <input id="q" type="search" placeholder="🔍 搜索站名 / 奖励 / 备注…" autocomplete="off">
+    <div class="chips" id="statusChips"></div>
+    <div class="chips" id="ratingChips"></div>
+  </div>
+
+  <main class="grid" id="list"></main>
+  <div class="empty" id="empty" hidden>没有匹配的站点,换个关键词或筛选条件试试</div>
+
+  <footer>
+    数据来源:免费公益站统计合集(Excel)· 生成于 2026-08-29 22:51<br>
+    「有效」以最近人工验证为准;公益站随时可能跑路,请勿充值,注意账号安全。<br>
+    更新数据:编辑 Excel 后运行 <code>python build.py</code> 重新生成本页。
+  </footer>
+</div>
+
+<script>
+var DATA = [{"name":"基元律动","url":"https://tokenrhythm.studio/i/rf_tr_Nii7WjYsktO0e-CAC4HMhEpC","status":"有效","register":"68元","daily":"","invite":"","model":"国模，有glm5.3","exp":"能用好几天，路由自动切换，速度比较快","other":"下载agent软件，但是对小白友好","rating":"顶级","verified":""},{"name":"zcode","url":"https://zcode.z.ai","status":"有效","register":"送3亿token，可用GLM5.3-flash，有效期3天","daily":"","invite":"","model":"国模，有glm5.3","exp":"经常系统繁忙，多点几次就行","other":"下载agent软件，但是对小白友好","rating":"顶级","verified":""},{"name":"AgentRouter","url":"https://agentrouter.org/register?aff=CzEG","status":"失效","register":"150刀","daily":"25刀","invite":"50刀","model":"每日限量：gpt和claude\ndsf和glm不限量","exp":"快，体验不错","other":"","rating":"夯","verified":"8.29"},{"name":"NOFX","url":"https://nofx.one/zh-CN/sign-in?ref=91CFCXG7","status":"有效","register":"5刀","daily":"5刀","invite":"5刀","model":"纯度相当于一半sol，新开的公益站","exp":"","other":"","rating":"夯","verified":"8.29"},{"name":"sharezzz","url":"https://api.sharezzz.com/register?aff=HGU6HK4RHW6A","status":"有效","register":"注册+加入QQ群，领codex入门卡50刀（1亿）","daily":"","invite":"","model":"","exp":"","other":"","rating":"","verified":"8.29"},{"name":"rua","url":"https://api.rua.chat/sign-up?aff=Lxge","status":"有效","register":"200额度","daily":"10-100额度","invite":"不充值无返利","model":"","exp":"","other":"","rating":"","verified":""},{"name":"幻城","url":"https://api.hcnsec.cn/","status":"有效","register":"10000元","daily":"100元左右","invite":"","model":"垃圾模型，量大但降智","exp":"稳定但是很慢","other":"耐蹬；是注册公司","rating":"顶级","verified":""},{"name":"维云","url":"https://vsllm.com/i/KqXK","status":"","register":"好像是3刀","daily":"每天奖励，第五天白嫖保底能用sol","invite":"额度充值券","model":"模型全但是有点降智","exp":"慢但是稳定","other":"耐蹬；还能抽卡，额度用不完，任务跑得太慢像在演我","rating":"NPC","verified":""},{"name":"肖恩","url":"https://free.supxh.xin/register?code=XR4HB7","status":"","register":"8000","daily":"1000每日过期","invite":"2000","model":"","exp":"","other":"解锁邀请任务才能依次解锁模型，有点折磨人了","rating":"","verified":""},{"name":"星见雅","url":"https://new.xinjianya.top/register?aff=ocjL","status":"复活了","register":"","daily":"1000左右自定义货币","invite":"","model":"68个模型，很全","exp":"","other":"页面UI很漂亮","rating":"","verified":""},{"name":"kktoken","url":"https://kktoken.cc/sign-up?aff=2drd","status":"无效","register":"","daily":"20刀","invite":"","model":"只有claude","exp":"","other":"","rating":"","verified":""},{"name":"gorouter","url":"https://gorouter.app/sign-up?aff=ZIS8","status":"有效","register":"50刀","daily":"8刀","invite":"","model":"","exp":"","other":"调用经常错误，不稳定，PRM时高时低","rating":"NPC","verified":""},{"name":"anyrouter","url":"https://chatanywhere.tech/console/overview","status":"有效","register":"","daily":"","invite":"","model":"用国模，别用好模型，速度一般","exp":"","other":"用github直接每天免费用，不用签到","rating":"夯","verified":""},{"name":"justwoker","url":"https://api.justwoker.icu/register?aff=troQ","status":"有效","register":"","daily":"","invite":"","model":"模型很全","exp":"","other":"","rating":"夯","verified":""},{"name":"辉哥1","url":"https://lzhiyu.ccwu.cc/register?ref=REF-FD7D72CFB8","status":"无效","register":"50次","daily":"50-100 次","invite":"100次","model":"","exp":"","other":"","rating":"夯","verified":""},{"name":"辉哥2","url":"http://781391.cc.cd/register?ref=REF-D058C0F05B","status":"无效","register":"50次","daily":"50-100 次","invite":"100次","model":"","exp":"","other":"","rating":"夯","verified":""},{"name":"辉哥3","url":"https://7891vip.cc.cd/login?view=reg&aff=evgQ","status":"无效","register":"30刀","daily":"15刀","invite":"","model":"","exp":"","other":"","rating":"夯","verified":""},{"name":"MiaoMu","url":"https://xiaomuai.cn/register?aff=9BN0","status":"","register":"2刀","daily":"2刀","invite":"2刀","model":"模型很全","exp":"","other":"价格还算便宜，几美元就能跑几百万token，十几个美元几千万token","rating":"","verified":"8.29"},{"name":"斑马","url":"https://bmapi.020212.xyz/register?aff=SZ52TQ9UP8QY","status":"无效","register":"","daily":"0.4刀","invite":"不充值无返利","model":"模型很全","exp":"","other":"","rating":"拉","verified":""},{"name":"beizhi","url":"https://beizhi.sylu.cc/sign-up?aff=hgzY","status":"有效","register":"30橘","daily":"10-100橘子","invite":"20橘子","model":"","exp":"快，体验不错","other":"太不耐蹬了，多攒攒；网站卡卡的","rating":"NPC","verified":""},{"name":"chuan","url":"https://chuan.sylu.cc/sign-up?aff=EZfA","status":"有效","register":"100刀","daily":"10-100刀","invite":"50刀","model":"有claude-fable5，其他的模型拉","exp":"fable5是15s，评分不慢","other":"","rating":"","verified":""},{"name":"tabi","url":"https://tabitoken.com/sign-up?aff=NvjM","status":"有效","register":"100刀","daily":"10刀","invite":"20刀","model":"","exp":"","other":"太不耐蹬了，多攒攒","rating":"","verified":""},{"name":"哈基米","url":"https://api.gemai.cc/sign-up?aff=8UV9MlGM","status":"无效","register":"100元","daily":"10元左右","invite":"","model":"模型中上","exp":"","other":"耐蹬","rating":"顶级","verified":""},{"name":"聚合api","url":"https://aiyiwei.vip/register?aff=nFd2","status":"无效","register":"0","daily":"0.5刀以内","invite":"不充值无返利","model":"模型很全","exp":"","other":"","rating":"拉","verified":""},{"name":"年华","url":"https://us-3.nianhuaapi.com/sign-up?aff=mqso","status":"无效","register":"0","daily":"0.5刀以内","invite":"不充值无返利","model":"","exp":"","other":"","rating":"拉","verified":""},{"name":"帮帮程序员","url":"https://helpcoder.cc/register?aff=3y6d","status":"无效","register":"200刀","daily":"100刀","invite":"","model":"","exp":"","other":"","rating":"","verified":""},{"name":"free","url":"https://free.lyclaude.site/register?aff=yjxO","status":"无效","register":"200刀","daily":"200刀","invite":"200刀","model":"gpt和claude","exp":"","other":"","rating":"","verified":""},{"name":"熊猫","url":"https://api520.pro/register?aff=vXoD","status":"有效","register":"100饭","daily":"","invite":"100饭","model":"模型很全","exp":"快，体验不错","other":"太不耐蹬了，还不能签到；是注册公司","rating":"饭多是夯","verified":""},{"name":"baaAI","url":"https://www.baaaai.com/register?aff=25RQ8K3XYREH","status":"有效","register":"5刀","daily":"","invite":"不充值无返利","model":"codex-auto-review就是gpt5.6sol","exp":"快，体验不错","other":"耐蹬","rating":"夯","verified":""},{"name":"VyceAI","url":"https://vyceai.com/signup?ref=VYCE_G8KE59","status":"有效","register":"50刀","daily":"10刀","invite":"10刀","model":"免费档的模型：luna、sonnet4.6、dsf","exp":"","other":"还需要认证discord；英文网站看着很高级","rating":"顶级","verified":""},{"name":"TX API","url":"https://ai.txcxgzs.com/sign-up?aff=bFwh","status":"有效","register":"","daily":"","invite":"","model":"模型使用free相关的。提供ds和glm5.3flash基本免费 有破甲的ds","exp":"","other":"免费那还说啥了","rating":"顶级","verified":""},{"name":"哈基米","url":"https://api.gemai.cc/sign-up?aff=8UV9MlGM","status":"有效","register":"100元","daily":"10-100元","invite":"","model":"模型很全","exp":"快，体验不错","other":"瞪得太快了","rating":"NPC","verified":""}];
+var STATS = {"total": 32, "ok": 18, "dead": 11, "unknown": 3, "verified": "8.29"};
+
+function bucketOf(s){
+  if (s === '有效' || s === '复活了') return 'ok';
+  if (s === '失效' || s === '无效') return 'dead';
+  return 'unknown';
+}
+var STATUS_CHIPS = [
+  {key:'all',   label:'全部',      test:function(){return true;}},
+  {key:'ok',    label:'有效',      test:function(s){return bucketOf(s)==='ok';}},
+  {key:'dead',  label:'失效/无效', test:function(s){return bucketOf(s)==='dead';}},
+  {key:'unknown',label:'未标注',   test:function(s){return bucketOf(s)==='unknown';}}
+];
+var RATING_ORDER = ['顶级','夯','NPC','拉'];
+var ratings = [];
+DATA.forEach(function(d){
+  if (d.rating && ratings.indexOf(d.rating) < 0) ratings.push(d.rating);
+});
+ratings.sort(function(a,b){
+  var ia = RATING_ORDER.indexOf(a), ib = RATING_ORDER.indexOf(b);
+  if (ia < 0) ia = 99; if (ib < 0) ib = 99;
+  return ia - ib || a.localeCompare(b);
+});
+
+var state = { q:'', status:'all', rating:'all' };
+var $list = document.getElementById('list');
+var $empty = document.getElementById('empty');
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function buildChips(el, chips, key){
+  el.innerHTML = '';
+  chips.forEach(function(c){
+    var n = DATA.filter(function(d){ return c.test(d.status, d.rating); }).length;
+    var b = document.createElement('button');
+    b.className = 'chip' + (state[key] === c.key ? ' on' : '');
+    b.innerHTML = esc(c.label) + '<span class="n">' + n + '</span>';
+    b.onclick = function(){
+      state[key] = c.key;
+      buildChips(document.getElementById('statusChips'), STATUS_CHIPS, 'status');
+      buildChips(document.getElementById('ratingChips'), RATING_CHIPS, 'rating');
+      render();
+    };
+    el.appendChild(b);
+  });
+}
+var RATING_CHIPS = [{key:'all', label:'全部评分', test:function(s,r){return true;}}]
+  .concat(ratings.map(function(r){
+    return {key:r, label:r, test:function(s, rr){return rr === r;}};
+  }));
+
+function matches(d){
+  if (state.status !== 'all'){
+    var c = STATUS_CHIPS.filter(function(x){return x.key===state.status;})[0];
+    if (c && !c.test(d.status, d.rating)) return false;
+  }
+  if (state.rating !== 'all'){
+    var rc = RATING_CHIPS.filter(function(x){return x.key===state.rating;})[0];
+    if (rc && !rc.test(d.status, d.rating)) return false;
+  }
+  if (state.q){
+    var q = state.q.toLowerCase();
+    var hay = (d.name+' '+d.url+' '+d.status+' '+d.register+' '+d.daily+' '+d.invite+' '
+      +d.model+' '+d.exp+' '+d.other+' '+d.rating+' '+d.verified).toLowerCase();
+    if (hay.indexOf(q) < 0) return false;
+  }
+  return true;
+}
+
+function fieldRow(k, v){
+  if (!v) return '';
+  return '<div class="f"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span></div>';
+}
+
+function cardHTML(d, i){
+  var st = bucketOf(d.status);
+  var stLabel = d.status || '未标注';
+  var badges = '<span class="badge b-'+st+'">'+esc(stLabel)+'</span>';
+  if (d.rating){
+    var rc = 'r-'+esc(d.rating);
+    badges += '<span class="badge '+rc+'">'+esc(d.rating)+'</span>';
+  }
+  var date = d.verified ? '<span class="date">验证 '+esc(d.verified)+'</span>' : '';
+  var actions = '';
+  if (d.url){
+    actions = '<div class="actions">'
+      + '<a class="btn primary" href="'+esc(d.url)+'" target="_blank" rel="noopener noreferrer">立即注册 ↗</a>'
+      + '<button class="btn copy" data-url="'+esc(d.url)+'">复制链接</button>'
+      + '</div>';
+  }
+  return '<article class="card">'
+    + '<div class="card-head"><h2>'+esc(i+'. '+d.name)+'</h2>'+badges+date+'</div>'
+    + '<div class="fields">'
+    + fieldRow('注册', d.register)
+    + fieldRow('每日签到', d.daily)
+    + fieldRow('邀请制', d.invite)
+    + fieldRow('模型质量', d.model)
+    + fieldRow('体验感', d.exp)
+    + fieldRow('其他', d.other)
+    + '</div>'
+    + actions
+    + '</article>';
+}
+
+function render(){
+  var html = '';
+  var n = 0;
+  DATA.forEach(function(d, idx){
+    if (matches(d)){ n++; html += cardHTML(d, idx+1); }
+  });
+  $list.innerHTML = html;
+  $empty.hidden = n > 0;
+}
+
+document.getElementById('q').addEventListener('input', function(e){
+  state.q = e.target.value.trim();
+  render();
+});
+
+$list.addEventListener('click', function(e){
+  var btn = e.target.closest('.copy');
+  if (!btn) return;
+  var url = btn.getAttribute('data-url');
+  function done(){
+    btn.classList.add('done');
+    btn.textContent = '已复制 ✓';
+    setTimeout(function(){
+      btn.classList.remove('done');
+      btn.textContent = '复制链接';
+    }, 1600);
+  }
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch(err){ window.prompt('长按复制链接:', url); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done, fallback);
+  } else { fallback(); }
+});
+
+buildChips(document.getElementById('statusChips'), STATUS_CHIPS, 'status');
+buildChips(document.getElementById('ratingChips'), RATING_CHIPS, 'rating');
+render();
+</script>
+</body>
+</html>
