@@ -1,5 +1,7 @@
 # 本机私密文件,绝不入库
 .env
+.env.development
+.env.production
 docs/bookmarks_2026_8_30.html
 tools/.profile/
 tools/cache/

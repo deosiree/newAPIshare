@@ -24,7 +24,7 @@ Excel/书签/New API       ↑ GitHub网页改CSV(手机也行)        访客只
 VITE_EDIT_KEY=<uuid>   # 访问 https://域名/?k=<uuid> 解锁;?k=off 退出;/edit 进编辑态
 ```
 
-`.env` 不入库 → **Cloudflare Pages 的 Environment variables 里必须配置同名变量**(否则线上构建无密钥)。
+`.env.production` 不入库 → **Cloudflare Pages 的 Environment variables 里必须配置同名变量**(否则线上构建无密钥)。
 
 ## 本地开发
 
