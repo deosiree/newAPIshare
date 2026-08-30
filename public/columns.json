@@ -8,11 +8,6 @@
       "width": 150
     },
     {
-      "field": "daily",
-      "header": "每日签到",
-      "width": 230
-    },
-    {
       "field": "status",
       "header": "状态",
       "type": "status",
@@ -27,6 +22,11 @@
     {
       "field": "register",
       "header": "注册",
+      "width": 230
+    },
+    {
+      "field": "daily",
+      "header": "每日签到",
       "width": 230
     },
     {
