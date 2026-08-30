@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from excel2data import render
+import sitecsv  # noqa: E402
 
 PORT = 8788
 AUTO_PUSH = True          # 确认写入后自动 git commit + push;改成 False 则只写本地
@@ -45,12 +45,10 @@ def load_env():
 
 ENV = load_env()
 
-# ---------- data.js 读写 ----------
+# ---------- data 读写 ----------
 def read_data():
-    text = (ROOT / "data.js").read_text(encoding="utf-8")
-    payload = json.loads(text.split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-    banner = text.split("window.SITE_DATA", 1)[0]
-    return payload, banner
+    """返回 (rows, meta)"""
+    return sitecsv.load_rows(), sitecsv.load_meta()
 
 def norm(s):
     s = (s or "").lower().strip()
@@ -288,9 +286,8 @@ def clean_channel(c):
 
 
 def build_changes(channels):
-    """渠道 vs data.js 求差集,返回 (changes, unmatched, scanned)"""
-    payload, _ = read_data()
-    rows = payload["rows"]
+    """渠道 vs sites.csv 求差集,返回 (changes, unmatched, scanned)"""
+    rows, _ = read_data()
     by_name = {r["name"]: r for r in rows}
     changes, unmatched = [], []
     for ch in channels:
@@ -313,23 +310,21 @@ def build_changes(channels):
 
 
 def apply_changes(changes):
-    payload, banner = read_data()
-    rows = payload["rows"]
+    rows, meta = read_data()
     by_name = {r["name"]: r for r in rows}
     for c in changes:
         row = by_name.get(c.get("name"))
         if row is not None and c.get("field") and c.get("value"):
             row[c["field"]] = c["value"]
-    payload["updated"] = datetime.now().strftime("%Y-%m-%d")
-    out = banner + render(rows, payload["updated"])
-    (ROOT / "data.js").write_text(out, encoding="utf-8")
+    sitecsv.save_rows(rows)
+    sitecsv.touch_updated(meta)
     pushed, msg = False, ""
     if AUTO_PUSH:
         try:
             def run(*args):
                 return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=60)
-            r1 = run("git", "add", "data.js")
-            r2 = run("git", "commit", "-m", "sync: New API 渠道状态 " + payload["updated"])
+            run("git", "add", "public/sites.csv", "public/columns.json")
+            r2 = run("git", "commit", "-m", "sync: New API 渠道状态 " + meta["updated"])
             r3 = run("git", "push", "origin", "main")
             pushed = r3.returncode == 0
             msg = (r3.stdout or r3.stderr or "").strip()[-200:]

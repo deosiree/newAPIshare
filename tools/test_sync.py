@@ -40,6 +40,14 @@ def http(method, url, body=None):
 
 def run_api_path(label, expect_api):
     print(f"\n== {label} ==")
+    # 0. 复位:清掉全部同步字段(测试对这三个字段拥有全权,结束后还原 pristine)
+    import sitecsv
+    pristine = sitecsv.load_rows()
+    pristine_meta = sitecsv.load_meta()
+    stripped = [{k: v for k, v in r.items() if k not in ("models", "latency", "api_status")}
+                for r in pristine]
+    sitecsv.save_rows(stripped)
+
     # 1. ping
     code, headers, ping = http("GET", "http://127.0.0.1:8788/ping")
     check("ping 可达", code == 200 and ping.get("ok") is True)
@@ -60,7 +68,7 @@ def run_api_path(label, expect_api):
     unmatched = snap.get("unmatched", [])
     check("神秘新站 进未匹配", any("神秘新站" in u for u in unmatched), str(unmatched))
 
-    # 3. changes 与 data.js 当前值做差
+    # 3. changes 与 sites.csv 当前值做差
     changes = snap.get("changes", [])
     by_field = {}
     for c in changes:
@@ -69,24 +77,24 @@ def run_api_path(label, expect_api):
           set(by_field.get("基元律动", [])) >= {"models", "latency", "api_status"}, str(by_field))
     check("神秘新站 没有产生变更", "神秘新站" not in by_field, str(by_field))
 
-    # 4. apply(取消自动 push) → 校验 data.js → 恢复
-    before = (ROOT / "data.js").read_text(encoding="utf-8")
+    # 4. apply(取消自动 push) → 校验 sites.csv → 恢复
     old_auto_push = sync_server.AUTO_PUSH
     sync_server.AUTO_PUSH = False
     try:
         picked = [c for c in changes if c["name"] == "基元律动"]
         code, _, res = http("POST", "http://127.0.0.1:8788/apply", {"changes": picked})
         check("apply 成功", code == 200 and res.get("ok") is True and res.get("pushed") is False, str(res))
-        after = (ROOT / "data.js").read_text(encoding="utf-8")
-        payload = json.loads(after.split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-        row = next(r for r in payload["rows"] if r["name"] == "基元律动")
-        check("data.js 已写入 models", row.get("models") == "glm-5.3,gpt-5.5,claude-opus", str(row.get("models")))
-        check("data.js 已写入 latency", row.get("latency") == "0.8s", str(row.get("latency")))
-        check("data.js 已写入 api_status", row.get("api_status") == "正常", str(row.get("api_status")))
-        check("banner 注释保留", after.startswith("/* 免费公益站统计合集"))
+        rows2 = sitecsv.load_rows()
+        row = next(r for r in rows2 if r["name"] == "基元律动")
+        check("sites.csv 已写入 models", row.get("models") == "glm-5.3,gpt-5.5,claude-opus", str(row.get("models")))
+        check("sites.csv 已写入 latency", row.get("latency") == "0.8s", str(row.get("latency")))
+        check("sites.csv 已写入 api_status", row.get("api_status") == "正常", str(row.get("api_status")))
+        meta2 = sitecsv.load_meta()
+        check("columns.json updated 已刷新", bool(meta2.get("updated")))
     finally:
         sync_server.AUTO_PUSH = old_auto_push
-        (ROOT / "data.js").write_text(before, encoding="utf-8")  # 还原现场
+        sitecsv.save_rows(pristine)         # 还原现场
+        sitecsv.save_meta(pristine_meta)
     print("  (data.js 已还原)")
 
 

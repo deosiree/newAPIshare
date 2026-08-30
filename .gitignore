@@ -6,3 +6,5 @@ tools/cache/
 __pycache__/
 *.pyc
 .zcode/
+node_modules/
+dist/

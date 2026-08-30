@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""数据断言测试:校验 data.js 的完整性与关键业务规则。用法: python tools/test_data.py"""
-import json
-import re
+"""数据断言测试:校验 public/sites.csv 的完整性与关键业务规则。用法: python tools/test_data.py"""
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+import sitecsv
+
 PASS, FAIL = [], []
 
 
@@ -15,13 +16,18 @@ def check(name, cond, detail=""):
     print(("  ✓ " if cond else "  ✗ ") + name + ("" if cond else f"  [{detail}]"))
 
 
+def host(u):
+    h = urlparse(u).netloc.lower()
+    return h[4:] if h.startswith("www.") else h
+
+
 def main():
-    text = (ROOT / "data.js").read_text(encoding="utf-8")
-    check("banner 版权注释保留", text.startswith("/* 免费公益站统计合集"))
-    payload = json.loads(text.split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-    rows = payload["rows"]
+    raw = sitecsv.SITES_CSV.read_bytes()
+    check("UTF-8 BOM 存在(Excel 中文兼容)", raw.startswith(b"\xef\xbb\xbf"))
+    rows = sitecsv.load_rows()
     check("32 行站点", len(rows) == 32, str(len(rows)))
-    check("updated 字段存在", bool(payload.get("updated")))
+    meta = sitecsv.load_meta()
+    check("columns.json 存在且 updated 有值", bool(meta.get("updated")))
 
     bad_url = [r["name"] for r in rows if not str(r.get("url", "")).startswith("http")]
     check("所有行都有合法注册链接", not bad_url, str(bad_url))
@@ -46,13 +52,9 @@ def main():
     check("签到地址 30 行", len(ck) == 30, str(len(ck)))
     miss = [r["name"] for r in rows if not r.get("checkin")]
     check("缺签到的是 zcode 和 TX API", sorted(miss) == ["TX API", "zcode"], str(miss))
-    # 签到地址与注册链接必须同主机
-    def host(u):
-        h = urlparse(u).netloc.lower()
-        return h[4:] if h.startswith("www.") else h
     cross = [r["name"] for r in ck if host(r["checkin"]) != host(r["url"])]
     check("签到地址与注册页同主机", not cross, str(cross))
-    # 状态/评分值域
+
     ok_status = {"有效", "失效", "无效", "复活了", ""}
     bad = sorted({r.get("status", "") for r in rows} - ok_status)
     check("状态值域正常", not bad, str(bad))

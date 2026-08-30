@@ -21,7 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from excel2data import render  # 复用 data.js 的统一渲染格式
+sys.path.insert(0, str(ROOT / "tools"))
+import sitecsv  # noqa: E402
 
 CACHE = ROOT / "tools" / "cache"
 DOCS = ROOT / "docs"
@@ -272,11 +273,7 @@ def main():
           f"源3 飞书docx: {len(src3)} 条 + {len(docx_notes)} 条注意")
 
     # 2. 读现有数据
-    data_file = ROOT / "data.js"
-    text = data_file.read_text(encoding="utf-8")
-    payload = json.loads(text.split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-    rows = payload["rows"]
-    banner = text.split("window.SITE_DATA", 1)[0]
+    rows = sitecsv.load_rows()
 
     match, name_to_row = build_matcher(rows)
 
@@ -333,8 +330,9 @@ def main():
                 r[col] = text
     counts = {col: sum(1 for r in rows if r.get(col)) for col in ("other2", "other3", "other4")}
 
-    # 4. 写回 data.js(保持统一渲染格式)
-    data_file.write_text(banner + render(rows, payload.get("updated", date.today().isoformat())), encoding="utf-8")
+    # 4. 写回 sites.csv
+    sitecsv.save_rows(rows)
+    sitecsv.touch_updated()
 
     # 5. 采集报告
     rep = ["# 采集报告", "", f"采集日期:{date.today().isoformat()}", ""]

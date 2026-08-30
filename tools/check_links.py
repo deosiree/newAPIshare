@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+import sitecsv  # noqa: E402
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
       "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
       "Accept-Language": "zh-CN,zh;q=0.9"}
@@ -35,8 +37,7 @@ def probe(url):
 
 
 def main():
-    payload = json.loads((ROOT / "data.js").read_text(encoding="utf-8").split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-    rows = payload["rows"]
+    rows = sitecsv.load_rows()
     targets = []
     for r in rows:
         if r.get("url"):

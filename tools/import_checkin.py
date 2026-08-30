@@ -18,7 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from excel2data import render
+sys.path.insert(0, str(ROOT / "tools"))
+import sitecsv  # noqa: E402
 
 BOOKMARKS = ROOT / "docs" / "bookmarks_2026_8_30.html"
 CK_KEYWORDS = ("console", "checkin", "check-in", "sign", "dashboard", "panel", "home", "token", "work")
@@ -118,11 +119,8 @@ def main():
     ai_items = [it for it in items if "AI" in it["path"].split("/")]
     print(f"书签共 {len(items)} 条,AI 目录下 {len(ai_items)} 条")
 
-    data_file = ROOT / "data.js"
-    text = data_file.read_text(encoding="utf-8")
-    payload = json.loads(text.split("window.SITE_DATA =", 1)[1].rsplit(";", 1)[0])
-    rows = payload["rows"]
-    banner = text.split("window.SITE_DATA", 1)[0]
+    data_file = None  # 已迁移到 CSV;保留变量占位避免下方引用报错
+    rows = sitecsv.load_rows()
 
     by_host = {}
     for it in ai_items:
@@ -142,7 +140,8 @@ def main():
             r.pop("checkin", None)
             missed.append(f"{r['name']}({reg_host})")
 
-    data_file.write_text(banner + render(rows, payload.get("updated", "")), encoding="utf-8")
+    sitecsv.save_rows(rows)
+    sitecsv.touch_updated()
     print(f"签到地址写入 {matched}/{len(rows)} 个站点")
     if missed:
         print("未找到同域名书签的站点:", "、".join(missed))

@@ -1,0 +1,113 @@
+{
+  "updated": "2026-08-30",
+  "columns": [
+    {
+      "field": "name",
+      "header": "公益站",
+      "type": "name"
+    },
+    {
+      "field": "status",
+      "header": "状态",
+      "type": "status",
+      "width": 70
+    },
+    {
+      "field": "rating",
+      "header": "评分",
+      "type": "rating",
+      "width": 70
+    },
+    {
+      "field": "register",
+      "header": "注册",
+      "width": 230
+    },
+    {
+      "field": "daily",
+      "header": "每日签到",
+      "width": 230
+    },
+    {
+      "field": "invite",
+      "header": "邀请制",
+      "hs": true,
+      "width": 230
+    },
+    {
+      "field": "model",
+      "header": "模型质量",
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "exp",
+      "header": "体验感",
+      "pri": true,
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "other",
+      "header": "其他",
+      "pri": true,
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "other2",
+      "header": "其他2·白嫖org",
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "other3",
+      "header": "其他3·飞书合集",
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "other4",
+      "header": "其他4·幻城导航",
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "verified",
+      "header": "验证",
+      "width": 70
+    },
+    {
+      "field": "models",
+      "header": "模型",
+      "pri": true,
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "latency",
+      "header": "响应",
+      "pri": true,
+      "width": 70
+    },
+    {
+      "field": "api_status",
+      "header": "渠道状态",
+      "type": "apistatus",
+      "pri": true,
+      "width": 110
+    },
+    {
+      "field": "url",
+      "header": "注册链接",
+      "type": "link",
+      "hidden": true
+    },
+    {
+      "field": "checkin",
+      "header": "签到地址",
+      "type": "link",
+      "hidden": true
+    }
+  ]
+}
