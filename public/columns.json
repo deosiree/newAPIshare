@@ -4,7 +4,8 @@
     {
       "field": "name",
       "header": "公益站",
-      "type": "name"
+      "type": "name",
+      "width": 150
     },
     {
       "field": "status",
