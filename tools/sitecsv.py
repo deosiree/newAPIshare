@@ -39,13 +39,15 @@ def load_rows():
     return out
 
 
-def save_rows(rows):
-    """按固定列序写回 sites.csv(UTF-8 BOM)。"""
+def save_rows(rows, coldefs=None):
+    """按列序写回 sites.csv(UTF-8 BOM)。
+    coldefs: [(字段名, 表头)];默认 FIELDS。编辑态加列后传入实际列定义。"""
+    coldefs = list(coldefs) if coldefs else FIELDS
     with open(SITES_CSV, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow([HIDDEN_HEADER] + [h for _, h in FIELDS])
+        w.writerow([HIDDEN_HEADER] + [h for _, h in coldefs])
         for r in rows:
-            w.writerow([r.get(HIDDEN_FIELD, "")] + [r.get(f, "") for f, _ in FIELDS])
+            w.writerow([r.get(HIDDEN_FIELD, "")] + [r.get(f, "") for f, _ in coldefs])
 
 
 def load_meta():

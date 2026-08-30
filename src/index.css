@@ -103,7 +103,81 @@ footer.foot{
   display:flex; gap:4px 14px; flex-wrap:wrap; align-items:center;
 }
 footer.foot a{color:var(--accent); text-decoration:none}
-/* ---- 编辑态(批次2完善) ---- */
+/* ---- 编辑态 ---- */
 .edit-hint{padding:60px 20px; text-align:center; color:var(--muted)}
 .edit-hint code{background:var(--accent-weak); color:var(--accent); padding:2px 8px; border-radius:6px}
+.etoolbar{
+  flex:0 0 auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;
+  padding:6px 2px 8px;
+}
+.tbtn{
+  padding:5px 11px; border-radius:9px; border:1px solid var(--line);
+  background:var(--card); color:var(--text); font-size:12.5px; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; user-select:none;
+}
+.tbtn:hover{border-color:var(--accent); color:var(--accent)}
+.tbtn:disabled{opacity:.45; cursor:not-allowed}
+.tbtn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+.tsep{width:1px; height:18px; background:var(--line); margin:0 3px}
+.tsel{
+  padding:5px 8px; border-radius:9px; border:1px solid var(--line);
+  background:var(--card); color:var(--text); font-size:12.5px;
+}
+.unhide{position:relative}
+.unhide summary{list-style:none}
+.unhide summary::-webkit-details-marker{display:none}
+.unhide-list{
+  position:absolute; top:110%; left:0; z-index:40; min-width:160px;
+  background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:6px; display:flex; flex-direction:column; gap:4px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
+.uh-empty{color:var(--muted); font-size:12px; padding:4px 6px}
+/* AG Grid 深色适配(覆盖 Quartz 主题的 CSS 变量) */
+.ag-dark{
+  --ag-background-color: var(--card);
+  --ag-foreground-color: var(--text);
+  --ag-header-background-color: var(--card2);
+  --ag-header-foreground-color: var(--muted);
+  --ag-border-color: var(--line);
+  --ag-row-border-color: var(--line);
+  --ag-odd-row-background-color: var(--card);
+  --ag-row-hover-color: var(--hover);
+  --ag-selected-row-background-color: var(--accent-weak);
+  --ag-row-selected-border-color: var(--accent);
+  --ag-checkbox-checked-color: var(--accent);
+  --ag-range-selection-border-color: var(--accent);
+  --ag-alphabetic-sort-filter-active-color: var(--accent);
+}
+.ctxmenu{
+  position:fixed; z-index:60; min-width:150px;
+  background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:5px; box-shadow:0 10px 28px rgba(0,0,0,.3);
+  display:flex; flex-direction:column;
+}
+.ctxmenu button{
+  text-align:left; padding:7px 12px; border:none; background:transparent;
+  color:var(--text); font-size:13px; border-radius:7px; cursor:pointer;
+}
+.ctxmenu button:hover{background:var(--hover)}
+.ctxmenu hr{border:none; border-top:1px solid var(--line); margin:4px 0}
+/* ---- 弹窗 ---- */
+.mask{
+  position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:50;
+  display:flex; align-items:center; justify-content:center; padding:16px;
+}
+.modal{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  width:min(860px,100%); max-height:86vh; display:flex; flex-direction:column;
+}
+.modal h3{margin:0; padding:14px 16px 10px; font-size:15px}
+.modal .mbody{overflow:auto; padding:0 16px; flex:1}
+.modal table{width:100%}
+.modal th,.modal td{font-size:12.5px; padding:6px 8px}
+.modal th{background:var(--card2)}
+.oldv{color:var(--muted); text-decoration:line-through; font-size:11.5px; max-width:220px}
+.newv{color:var(--ok-tx); max-width:260px}
+.mfoot{display:flex; gap:10px; align-items:center; padding:12px 16px; border-top:1px solid var(--line); flex-wrap:wrap}
+.mfoot .grow{flex:1}
 [hidden]{display:none!important}
+

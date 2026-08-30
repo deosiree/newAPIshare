@@ -91,6 +91,18 @@ def run_api_path(label, expect_api):
         check("sites.csv 已写入 api_status", row.get("api_status") == "正常", str(row.get("api_status")))
         meta2 = sitecsv.load_meta()
         check("columns.json updated 已刷新", bool(meta2.get("updated")))
+
+        # 5. /save 全量保存(编辑态保存链路)
+        cols_meta = sitecsv.load_meta()["columns"]
+        rows3 = sitecsv.load_rows()
+        tgt = next(r for r in rows3 if r["name"] == "NOFX")
+        tgt["rating"] = "NPC"
+        code, _, res3 = http("POST", "http://127.0.0.1:8788/save",
+                             {"rows": rows3, "columns": cols_meta, "updated": "2026-08-30"})
+        check("save 全量保存成功", code == 200 and res3.get("ok") is True, str(res3))
+        rows4 = sitecsv.load_rows()
+        check("save 已写入评分改动", next(r for r in rows4 if r["name"] == "NOFX")["rating"] == "NPC")
+        check("save 后列数不变", len(sitecsv.load_meta()["columns"]) == len(cols_meta))
     finally:
         sync_server.AUTO_PUSH = old_auto_push
         sitecsv.save_rows(pristine)         # 还原现场

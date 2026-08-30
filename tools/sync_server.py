@@ -335,6 +335,34 @@ def apply_changes(changes):
     return {"ok": True, "pushed": pushed, "msg": msg}
 
 
+def save_all(rows, columns, updated):
+    """编辑态全量保存:写回 sites.csv + columns.json,并可选自动 push。"""
+    from datetime import date
+    if not isinstance(rows, list) or not rows:
+        return {"ok": False, "msg": "rows 为空,拒绝写入"}
+    coldefs = [(c["field"], c["header"]) for c in columns if c.get("field") and c.get("header")]
+    if not coldefs:
+        return {"ok": False, "msg": "columns 为空,拒绝写入"}
+    meta = {"updated": updated or date.today().isoformat(), "columns": columns}
+    sitecsv.save_rows(rows, coldefs)
+    sitecsv.save_meta(meta)
+    pushed, msg = False, ""
+    if AUTO_PUSH:
+        try:
+            def run(*args):
+                return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=60)
+            run("git", "add", "public/sites.csv", "public/columns.json")
+            run("git", "commit", "-m", "edit: 在线编辑 " + meta["updated"])
+            r3 = run("git", "push", "origin", "main")
+            pushed = r3.returncode == 0
+            msg = (r3.stdout or r3.stderr or "").strip()[-200:]
+            if r3.returncode != 0:
+                msg = msg or "git push 失败,本地已写入"
+        except Exception as e:
+            msg = f"git 操作异常:{e}"
+    return {"ok": True, "pushed": pushed, "msg": msg}
+
+
 # ---------- HTTP 服务 ----------
 class Handler(BaseHTTPRequestHandler):
     def _cors(self):
@@ -388,6 +416,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": False, "msg": "没有要写入的变更"})
                     return
                 self._json(apply_changes(changes))
+            except Exception as e:
+                self._json({"ok": False, "msg": str(e)}, 500)
+        elif self.path == "/save":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length) or b"{}")
+                self._json(save_all(body.get("rows") or [], body.get("columns") or [],
+                                    body.get("updated") or ""))
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
         else:
