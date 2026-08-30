@@ -17,9 +17,12 @@ import re
 import subprocess
 import sys
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+TOKEN = uuid.uuid4().hex  # 本实例令牌:防止 Windows 端口双绑时请求打到旧实例
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -32,9 +35,12 @@ LOCK = threading.Lock()
 
 # ---------- .env ----------
 def load_env():
+    """依次合并读取 .env → .env.development → .env.production(后加载的覆盖先加载的)。"""
     env = {}
-    f = ROOT / ".env"
-    if f.exists():
+    for name in (".env", ".env.development", ".env.production"):
+        f = ROOT / name
+        if not f.exists():
+            continue
         for line in f.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -335,8 +341,8 @@ def apply_changes(changes):
     return {"ok": True, "pushed": pushed, "msg": msg}
 
 
-def save_all(rows, columns, updated):
-    """编辑态全量保存:写回 sites.csv + columns.json,并可选自动 push。"""
+def save_all(rows, columns, updated, buttons=None):
+    """编辑态全量保存:写回 sites.csv + columns.json + buttons.json,并可选自动 push。"""
     from datetime import date
     if not isinstance(rows, list) or not rows:
         return {"ok": False, "msg": "rows 为空,拒绝写入"}
@@ -346,12 +352,15 @@ def save_all(rows, columns, updated):
     meta = {"updated": updated or date.today().isoformat(), "columns": columns}
     sitecsv.save_rows(rows, coldefs)
     sitecsv.save_meta(meta)
+    if isinstance(buttons, dict):
+        (ROOT / "public" / "buttons.json").write_text(
+            json.dumps(buttons, ensure_ascii=False, indent=2), encoding="utf-8")
     pushed, msg = False, ""
     if AUTO_PUSH:
         try:
             def run(*args):
                 return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=60)
-            run("git", "add", "public/sites.csv", "public/columns.json")
+            run("git", "add", "public/sites.csv", "public/columns.json", "public/buttons.json")
             run("git", "commit", "-m", "edit: 在线编辑 " + meta["updated"])
             r3 = run("git", "push", "origin", "main")
             pushed = r3.returncode == 0
@@ -387,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/ping":
-            self._json({"ok": True, "env": bool(ENV.get("NEWAPI_USER")), "auto_push": AUTO_PUSH})
+            self._json({"ok": True, "ver": 2, "token": TOKEN, "env": bool(ENV.get("NEWAPI_USER")), "auto_push": AUTO_PUSH})
         elif self.path == "/snapshot":
             if not LOCK.acquire(blocking=False):
                 self._json({"error": "上一次检测还在进行中"}, 429)
@@ -423,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 self._json(save_all(body.get("rows") or [], body.get("columns") or [],
-                                    body.get("updated") or ""))
+                                    body.get("updated") or "", body.get("buttons")))
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
         else:
@@ -434,10 +443,34 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        sys.exit(f"端口 {PORT} 绑定失败:{e}\n可能有别的程序占用,或已有同步助手在运行。")
+    import threading as _t
+    import urllib.request as _u
+    thread = _t.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    # Windows 端口双绑保险:确认 /ping 应答来自本实例,否则请求会全部打到旧进程
+    try:
+        with _u.urlopen(f"http://127.0.0.1:{PORT}/ping", timeout=4) as r:
+            j = json.loads(r.read())
+        if j.get("token") != TOKEN:
+            server.shutdown()
+            sys.exit(
+                "⚠️ 检测到另一个同步助手实例正在占用端口 8788(旧实例)。\n"
+                "请求会被旧实例接走,导致保存失败/读到旧数据。\n"
+                "请先结束旧实例:  netstat -ano | findstr :8788  →  taskkill /F /PID <pid>\n"
+                "然后再启动本助手。"
+            )
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # 自检网络异常不阻断(极少数环境)
     print(f"同步助手已启动: http://127.0.0.1:{PORT}  (Ctrl+C 退出)")
     print(f"  New API: {ENV['NEWAPI_BASE_URL']}  |  .env 账密: {'已配置(自动登录)' if ENV.get('NEWAPI_USER') else '未配置(首次手动登录)'}")
     print(f"  确认写入后自动 push: {'开' if AUTO_PUSH else '关'}")
+    print("  ⚠️ 本窗口运行的是启动时的代码;仓库更新后请关闭本窗口重新启动!")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

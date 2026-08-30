@@ -122,7 +122,11 @@ def main():
         sync_server.ENV["NEWAPI_PASS"] = "tester123"
         sync_server.PAGE_PATHS = ["/channels"]
         srv = threading_start()
-        time.sleep(0.6)
+        time.sleep(0.8)
+        # 令牌握手:确保 8788 应答来自本进程(防 Windows 端口双绑打到旧实例)
+        import urllib.request as _u
+        ping = json.loads(_u.urlopen("http://127.0.0.1:8788/ping", timeout=3).read())
+        assert ping.get("token") == sync_server.TOKEN, "端口 8788 被旧实例占用,请先结束旧进程"
 
         run_api_path("路径A:内部 API 抓取", expect_api=True)
 

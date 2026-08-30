@@ -1,8 +1,14 @@
-/** 数据加载:public/sites.csv(唯一数据源) + public/columns.json(列布局元数据) */
+/** 数据加载:public/sites.csv(唯一数据源) + public/columns.json(列布局) + public/buttons.json(单元格按钮) */
 import Papa from 'papaparse'
 import { BASE_COLUMNS, HIDDEN_ROW_HEADER, HIDDEN_ROW_FIELD, type ColumnDef } from '../fields'
 
 export type Row = Record<string, string>
+
+export interface ButtonDef { label: string; field: string }
+export interface ButtonsMeta {
+  columnDefaults?: Record<string, ButtonDef[]>   // 列级默认按钮: {列field: [按钮]}
+  overrides?: Record<string, ButtonDef[] | null> // 单元格覆盖: "<uid>|<field>": 按钮|null(null=删除默认)
+}
 
 export interface ColumnsMeta {
   updated?: string
@@ -12,6 +18,7 @@ export interface ColumnsMeta {
 export interface SiteData {
   rows: Row[]
   columns: ColumnDef[]
+  buttons?: ButtonsMeta
   updated?: string
 }
 
@@ -20,12 +27,15 @@ function stripBom(s: string): string {
 }
 
 export async function loadSiteData(): Promise<SiteData> {
-  const [csvText, colsText] = await Promise.all([
+  const [csvText, colsText, btnText] = await Promise.all([
     fetch('./sites.csv').then((r) => {
       if (!r.ok) throw new Error('sites.csv 加载失败: ' + r.status)
       return r.text()
     }),
     fetch('./columns.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+    fetch('./buttons.json')
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null),
   ])
@@ -66,9 +76,19 @@ export async function loadSiteData(): Promise<SiteData> {
     })
     return out
   })
-  return { rows, columns, updated: meta.updated }
+  return { rows, columns, buttons: (btnText as ButtonsMeta | null) ?? undefined, updated: meta.updated }
 }
 
 export function isRowHidden(r: Row): boolean {
   return r[HIDDEN_ROW_FIELD] === '1'
+}
+
+/** 解析某行某列最终生效的按钮(单元格覆盖优先,否则列默认;null 覆盖 = 无按钮) */
+export function cellButtons(row: Row, field: string, bm?: ButtonsMeta): ButtonDef[] {
+  if (!bm) return []
+  const key = (row.uid ?? '') + '|' + field
+  if (bm.overrides && key in bm.overrides) {
+    return bm.overrides[key] ?? []
+  }
+  return bm.columnDefaults?.[field] ?? []
 }

@@ -41,8 +41,17 @@ def load_rows():
 
 def save_rows(rows, coldefs=None):
     """按列序写回 sites.csv(UTF-8 BOM)。
-    coldefs: [(字段名, 表头)];默认 FIELDS。编辑态加列后传入实际列定义。"""
-    coldefs = list(coldefs) if coldefs else FIELDS
+    coldefs: [(字段名, 表头)];默认 FIELDS + 行里出现的额外键(如 uid 自动保留)。"""
+    if coldefs is None:
+        extra, seen = [], {f for f, _ in FIELDS} | {HIDDEN_FIELD}
+        for r in rows:
+            for k in r:
+                if k and k not in seen:
+                    seen.add(k)
+                    extra.append((k, k))
+        coldefs = list(FIELDS) + extra
+    else:
+        coldefs = list(coldefs)
     with open(SITES_CSV, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow([HIDDEN_HEADER] + [h for _, h in coldefs])

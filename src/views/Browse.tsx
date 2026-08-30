@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Row, SiteData } from '../lib/data'
 import type { ColumnDef } from '../fields'
-import { isRowHidden } from '../lib/data'
+import { cellButtons, isRowHidden } from '../lib/data'
 
 function bucketOf(s?: string): 'ok' | 'dead' | 'unknown' {
   if (s === '有效' || s === '复活了') return 'ok'
@@ -135,14 +135,18 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                 {visibleCols.map((c) => {
                   const v = r[c.field]
                   const wcls = widthClass(c)
+                  const btns = cellButtons(r, c.field, data.buttons).filter((b) => r[b.field])
                   if (c.type === 'name') {
                     return (
                       <td key={c.field} className="stick nw">
                         <span className="sname">{r.name}</span>
-                        <span className="btns">
-                          {r.url && <a className="mini reg" href={r.url} target="_blank" rel="noopener noreferrer">注册 ↗</a>}
-                          {r.checkin && <a className="mini ck" href={r.checkin} target="_blank" rel="noopener noreferrer">签到</a>}
-                        </span>
+                        {btns.length > 0 && (
+                          <span className="btns">
+                            {btns.map((b) => (
+                              <a key={b.label} className="mini reg" href={r[b.field]} target="_blank" rel="noopener noreferrer">{b.label}</a>
+                            ))}
+                          </span>
+                        )}
                       </td>
                     )
                   }
@@ -159,10 +163,19 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                     const b = String(v).includes('正常') ? 'b-ok' : String(v).includes('异常') ? 'b-dead' : 'b-unk'
                     return <td key={c.field} className="nw"><span className={'badge ' + b}>{v}</span></td>
                   }
-                  if (!v) return <td key={c.field} />
+                  if (!v && btns.length === 0) return <td key={c.field} />
                   return (
                     <td key={c.field} className={[wcls, c.hs ? 'hs' : ''].join(' ')}>
-                      <span className={String(v).length > 90 ? 'clamp3' : ''} title={String(v).length > 90 ? v : undefined}>{v}</span>
+                      {v && (
+                        <span className={String(v).length > 90 ? 'clamp3' : ''} title={String(v).length > 90 ? v : undefined}>{v}</span>
+                      )}
+                      {btns.length > 0 && (
+                        <span className="btns">
+                          {btns.map((b) => (
+                            <a key={b.label} className="mini ck" href={r[b.field]} target="_blank" rel="noopener noreferrer">{b.label}</a>
+                          ))}
+                        </span>
+                      )}
                     </td>
                   )
                 })}

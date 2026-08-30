@@ -84,26 +84,6 @@
       "width": 70
     },
     {
-      "field": "models",
-      "header": "模型",
-      "pri": true,
-      "hs": true,
-      "width": 320
-    },
-    {
-      "field": "latency",
-      "header": "响应",
-      "pri": true,
-      "width": 70
-    },
-    {
-      "field": "api_status",
-      "header": "渠道状态",
-      "type": "apistatus",
-      "pri": true,
-      "width": 110
-    },
-    {
       "field": "url",
       "header": "注册链接",
       "type": "link",

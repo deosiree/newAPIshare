@@ -96,6 +96,9 @@ td.stick .btns{display:flex; gap:5px; margin-top:4px; white-space:nowrap}
 .mini:active{transform:scale(.95)}
 .mini.reg{background:var(--accent); color:#fff}
 .mini.ck{border:1px solid var(--accent); color:var(--accent); background:var(--accent-weak)}
+/* AG Grid 编辑态:按钮与文本同行,避免固定行高裁切 */
+.btns-inline{display:inline-flex; gap:5px; margin-left:8px; vertical-align:middle}
+.ag-dark .ag-cell .mini.ck{--ag-accent-color: var(--accent)}
 .empty{padding:50px 0; text-align:center; color:var(--muted); font-size:13.5px}
 /* ---- 底部 ---- */
 footer.foot{

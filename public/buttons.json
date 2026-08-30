@@ -1,0 +1,17 @@
+{
+  "columnDefaults": {
+    "name": [
+      {
+        "label": "注册 ↗",
+        "field": "url"
+      }
+    ],
+    "daily": [
+      {
+        "label": "签到",
+        "field": "checkin"
+      }
+    ]
+  },
+  "overrides": {}
+}
