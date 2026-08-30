@@ -2,6 +2,11 @@
   "updated": "2026-08-30",
   "columns": [
     {
+      "field": "uid",
+      "header": "uid",
+      "hidden": true
+    },
+    {
       "field": "name",
       "header": "公益站",
       "type": "name",
