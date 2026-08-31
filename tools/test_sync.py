@@ -4,7 +4,7 @@
 
 覆盖两条抓取路径:内部 API(默认)与 DOM 兜底(?api=0)。
 运行前先手动启动 mock:python tools/mock_newapi/server.py
-本脚本会自行拉起 mock 与 sync_server 的 HTTP 线程,结束后全部清理并还原 data.js。
+本脚本会自行拉起 mock 与 sync_server 的 HTTP 线程,结束后全部清理并还原 sites.xlsx。
 """
 import json
 import subprocess
@@ -41,12 +41,12 @@ def http(method, url, body=None):
 def run_api_path(label, expect_api):
     print(f"\n== {label} ==")
     # 0. 复位:清掉全部同步字段(测试对这三个字段拥有全权,结束后还原 pristine)
-    import sitecsv
-    pristine = sitecsv.load_rows()
-    pristine_meta = sitecsv.load_meta()
+    import siteexcel
+    pristine = siteexcel.load_rows()
+    pristine_meta = siteexcel.load_meta()
     stripped = [{k: v for k, v in r.items() if k not in ("models", "latency", "api_status")}
                 for r in pristine]
-    sitecsv.save_rows(stripped)
+    siteexcel.save_rows(stripped)
 
     # 1. ping
     code, headers, ping = http("GET", "http://127.0.0.1:8788/ping")
@@ -68,7 +68,7 @@ def run_api_path(label, expect_api):
     unmatched = snap.get("unmatched", [])
     check("神秘新站 进未匹配", any("神秘新站" in u for u in unmatched), str(unmatched))
 
-    # 3. changes 与 sites.csv 当前值做差
+    # 3. changes 与 sites.xlsx 当前值做差
     changes = snap.get("changes", [])
     by_field = {}
     for c in changes:
@@ -77,37 +77,37 @@ def run_api_path(label, expect_api):
           set(by_field.get("基元律动", [])) >= {"models", "latency", "api_status"}, str(by_field))
     check("神秘新站 没有产生变更", "神秘新站" not in by_field, str(by_field))
 
-    # 4. apply(取消自动 push) → 校验 sites.csv → 恢复
+    # 4. apply(取消自动 push) → 校验 sites.xlsx → 恢复
     old_auto_push = sync_server.AUTO_PUSH
     sync_server.AUTO_PUSH = False
     try:
         picked = [c for c in changes if c["name"] == "基元律动"]
         code, _, res = http("POST", "http://127.0.0.1:8788/apply", {"changes": picked})
         check("apply 成功", code == 200 and res.get("ok") is True and res.get("pushed") is False, str(res))
-        rows2 = sitecsv.load_rows()
+        rows2 = siteexcel.load_rows()
         row = next(r for r in rows2 if r["name"] == "基元律动")
-        check("sites.csv 已写入 models", row.get("models") == "glm-5.3,gpt-5.5,claude-opus", str(row.get("models")))
-        check("sites.csv 已写入 latency", row.get("latency") == "0.8s", str(row.get("latency")))
-        check("sites.csv 已写入 api_status", row.get("api_status") == "正常", str(row.get("api_status")))
-        meta2 = sitecsv.load_meta()
+        check("sites.xlsx 已写入 models", row.get("models") == "glm-5.3,gpt-5.5,claude-opus", str(row.get("models")))
+        check("sites.xlsx 已写入 latency", row.get("latency") == "0.8s", str(row.get("latency")))
+        check("sites.xlsx 已写入 api_status", row.get("api_status") == "正常", str(row.get("api_status")))
+        meta2 = siteexcel.load_meta()
         check("columns.json updated 已刷新", bool(meta2.get("updated")))
 
         # 5. /save 全量保存(编辑态保存链路)
-        cols_meta = sitecsv.load_meta()["columns"]
-        rows3 = sitecsv.load_rows()
+        cols_meta = siteexcel.load_meta()["columns"]
+        rows3 = siteexcel.load_rows()
         tgt = next(r for r in rows3 if r["name"] == "NOFX")
         tgt["rating"] = "NPC"
         code, _, res3 = http("POST", "http://127.0.0.1:8788/save",
                              {"rows": rows3, "columns": cols_meta, "updated": "2026-08-30"})
         check("save 全量保存成功", code == 200 and res3.get("ok") is True, str(res3))
-        rows4 = sitecsv.load_rows()
+        rows4 = siteexcel.load_rows()
         check("save 已写入评分改动", next(r for r in rows4 if r["name"] == "NOFX")["rating"] == "NPC")
-        check("save 后列数不变", len(sitecsv.load_meta()["columns"]) == len(cols_meta))
+        check("save 后列数不变", len(siteexcel.load_meta()["columns"]) == len(cols_meta))
     finally:
         sync_server.AUTO_PUSH = old_auto_push
-        sitecsv.save_rows(pristine)         # 还原现场
-        sitecsv.save_meta(pristine_meta)
-    print("  (data.js 已还原)")
+        siteexcel.save_rows(pristine)         # 还原现场
+        siteexcel.save_meta(pristine_meta)
+    print("  (sites.xlsx 已还原)")
 
 
 def main():

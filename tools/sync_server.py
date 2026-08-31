@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -24,9 +25,78 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOKEN = uuid.uuid4().hex  # 本实例令牌:防止 Windows 端口双绑时请求打到旧实例
 
+# ---------- Excel 文件监视(WPS/Excel 编辑保存后自动同步) ----------
+class ExcelWatcher:
+    """轮询 sites.xlsx 修改时间;检测到保存 → 去抖 → 自动 commit+push(单飞锁防重入)。"""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.stop_evt = threading.Event()
+        self.thread = None
+        self.state = {"watching": False, "syncing": False, "last_sync": "", "last_error": ""}
+        self.last_mtime = 0.0
+
+    def start(self):
+        with self.lock:
+            if self.state["watching"]:
+                return
+            self.stop_evt.clear()
+            self.last_mtime = siteexcel.SITES_XLSX.stat().st_mtime if siteexcel.SITES_XLSX.exists() else 0.0
+            self.state.update(watching=True, syncing=False, last_error="")
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
+
+    def stop(self):
+        with self.lock:
+            self.stop_evt.set()
+            self.state["watching"] = False
+
+    def status(self):
+        with self.lock:
+            return dict(self.state)
+
+    def _sync_once(self):
+        """读取 Excel 最新内容并提交推送，避免监视过程重复写损坏文件。"""
+        rows = siteexcel.load_rows()
+        meta = siteexcel.load_meta()
+        coldefs = [(c["field"], c["header"]) for c in meta.get("columns", []) if c.get("field") and c.get("header")]
+        siteexcel.save_rows(rows, coldefs)
+        siteexcel.touch_updated(meta)
+        pushed, msg = git_commit_push(
+            ("public/sites.xlsx", "public/columns.json", "public/buttons.json"),
+            "excel: 本机表格编辑 " + meta["updated"],
+        )
+        self.state["last_sync"] = datetime.now().strftime("%H:%M:%S")
+        self.state["last_error"] = "" if pushed or msg == "无变化" else msg
+
+    def _run(self):
+        while not self.stop_evt.is_set():
+            try:
+                if not self.state["syncing"]:
+                    m = siteexcel.SITES_XLSX.stat().st_mtime
+                    if m != self.last_mtime:
+                        with self.lock:  # 单飞锁:同一时间只跑一次同步
+                            if not self.state["syncing"]:
+                                self.state["syncing"] = True
+                            else:
+                                continue
+                        try:
+                            time.sleep(1.5)  # 去抖:等 WPS/Excel 写完盘
+                            self.last_mtime = siteexcel.SITES_XLSX.stat().st_mtime
+                            self._sync_once()
+                        finally:
+                            self.last_mtime = siteexcel.SITES_XLSX.stat().st_mtime
+                            self.state["syncing"] = False
+            except Exception as e:
+                self.state["last_error"] = str(e)[:120]
+                self.state["syncing"] = False
+            self.stop_evt.wait(2)
+
+WATCH = ExcelWatcher()
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-import sitecsv  # noqa: E402
+import siteexcel  # noqa: E402
 
 PORT = 8788
 AUTO_PUSH = True          # 确认写入后自动 git commit + push;改成 False 则只写本地
@@ -52,9 +122,16 @@ def load_env():
 ENV = load_env()
 
 # ---------- data 读写 ----------
+def current_branch():
+    """读取当前 Git 分支，持续交付时避免把推送目标写死为 main。"""
+    result = subprocess.run(("git", "branch", "--show-current"), cwd=ROOT, capture_output=True, text=True, timeout=60)
+    branch = result.stdout.strip()
+    return branch or "codex/excel-editor-refactor"
+
+
 def read_data():
     """返回 (rows, meta)"""
-    return sitecsv.load_rows(), sitecsv.load_meta()
+    return siteexcel.load_rows(), siteexcel.load_meta()
 
 def norm(s):
     s = (s or "").lower().strip()
@@ -292,7 +369,7 @@ def clean_channel(c):
 
 
 def build_changes(channels):
-    """渠道 vs sites.csv 求差集,返回 (changes, unmatched, scanned)"""
+    """渠道 vs sites.xlsx 求差集,返回 (changes, unmatched, scanned)"""
     rows, _ = read_data()
     by_name = {r["name"]: r for r in rows}
     changes, unmatched = [], []
@@ -316,59 +393,88 @@ def build_changes(channels):
 
 
 def apply_changes(changes):
+    """把 New API 渠道差异写入第一张工作表，并按配置自动提交推送。"""
     rows, meta = read_data()
     by_name = {r["name"]: r for r in rows}
-    for c in changes:
-        row = by_name.get(c.get("name"))
-        if row is not None and c.get("field") and c.get("value"):
-            row[c["field"]] = c["value"]
-    sitecsv.save_rows(rows)
-    sitecsv.touch_updated(meta)
-    pushed, msg = False, ""
-    if AUTO_PUSH:
-        try:
-            def run(*args):
-                return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=60)
-            run("git", "add", "public/sites.csv", "public/columns.json")
-            r2 = run("git", "commit", "-m", "sync: New API 渠道状态 " + meta["updated"])
-            r3 = run("git", "push", "origin", "main")
-            pushed = r3.returncode == 0
-            msg = (r3.stdout or r3.stderr or "").strip()[-200:]
-            if r3.returncode != 0:
-                msg = msg or "git push 失败,本地已写入"
-        except Exception as e:
-            msg = f"git 操作异常:{e}"
+    for change in changes:
+        row = by_name.get(change.get("name"))
+        if row is not None and change.get("field") and change.get("value"):
+            row[change["field"]] = change["value"]
+    siteexcel.save_rows(rows)
+    siteexcel.touch_updated(meta)
+    if not AUTO_PUSH:
+        return {"ok": True, "pushed": False, "msg": "已写入本地"}
+    pushed, msg = git_commit_push(
+        ("public/sites.xlsx", "public/columns.json"),
+        "sync: New API 渠道状态 " + meta["updated"],
+    )
     return {"ok": True, "pushed": pushed, "msg": msg}
 
 
-def save_all(rows, columns, updated, buttons=None):
-    """编辑态全量保存:写回 sites.csv + columns.json + buttons.json,并可选自动 push。"""
+def merge_workbook_extras(current, extras):
+    """合并编辑态工作簿元数据；显式空值用于清除旧样式、行高和列宽。
+
+    Args:
+        current: 当前 XLSX 解析出的工作簿元数据。
+        extras: 前端提交的可选元数据字段。
+
+    Returns:
+        包含 styles、row_heights、column_widths 的新字典。
+    """
+    extras = dict(extras or {})
+    return {
+        "styles": extras["styles"] if "styles" in extras else current.get("styles") or {},
+        "row_heights": extras["rowHeights"] if "rowHeights" in extras else current.get("row_heights") or {},
+        "column_widths": extras["columnWidths"] if "columnWidths" in extras else current.get("column_widths") or {},
+    }
+
+
+def save_all(rows, columns, updated, buttons=None, extras=None):
+    """编辑态全量保存：写回 XLSX、应用元数据和按钮配置，并可选自动推送。"""
     from datetime import date
     if not isinstance(rows, list) or not rows:
-        return {"ok": False, "msg": "rows 为空,拒绝写入"}
-    coldefs = [(c["field"], c["header"]) for c in columns if c.get("field") and c.get("header")]
-    if not coldefs:
-        return {"ok": False, "msg": "columns 为空,拒绝写入"}
-    meta = {"updated": updated or date.today().isoformat(), "columns": columns}
-    sitecsv.save_rows(rows, coldefs)
-    sitecsv.save_meta(meta)
+        return {"ok": False, "msg": "rows 为空，拒绝写入"}
+    if not isinstance(columns, list) or not columns:
+        return {"ok": False, "msg": "columns 为空，拒绝写入"}
+
+    current = siteexcel.load_workbook(siteexcel.SITES_XLSX, siteexcel.load_meta().get("columns") or [])
+    extras = dict(extras or {})
+    document = dict(current)
+    document.update({
+        "rows": rows,
+        "columns": columns,
+        **merge_workbook_extras(current, extras),
+    })
+    siteexcel.save_workbook(siteexcel.SITES_XLSX, document)
+
+    meta = {key: value for key, value in extras.items() if key not in {"styles", "rowHeights", "columnWidths"}}
+    meta["updated"] = updated or date.today().isoformat()
+    meta["columns"] = columns
+    siteexcel.save_meta(meta)
     if isinstance(buttons, dict):
-        (ROOT / "public" / "buttons.json").write_text(
+        siteexcel.BUTTONS_JSON.write_text(
             json.dumps(buttons, ensure_ascii=False, indent=2), encoding="utf-8")
+
     pushed, msg = False, ""
     if AUTO_PUSH:
         try:
             def run(*args):
                 return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=60)
-            run("git", "add", "public/sites.csv", "public/columns.json", "public/buttons.json")
-            run("git", "commit", "-m", "edit: 在线编辑 " + meta["updated"])
-            r3 = run("git", "push", "origin", "main")
-            pushed = r3.returncode == 0
-            msg = (r3.stdout or r3.stderr or "").strip()[-200:]
-            if r3.returncode != 0:
-                msg = msg or "git push 失败,本地已写入"
-        except Exception as e:
-            msg = f"git 操作异常:{e}"
+            paths = ("public/sites.xlsx", "public/columns.json", "public/buttons.json")
+            dirty = run("git", "status", "--porcelain", "--", *paths)
+            if dirty.stdout.strip():
+                run("git", "add", *paths)
+                commit = run("git", "commit", "-m", "edit: 在线编辑 " + meta["updated"])
+                if commit.returncode != 0:
+                    msg = (commit.stderr or commit.stdout or "git commit 失败").strip()[-200:]
+                else:
+                    pushed_result = run("git", "push", "origin", current_branch())
+                    pushed = pushed_result.returncode == 0
+                    msg = (pushed_result.stdout or pushed_result.stderr or "").strip()[-200:]
+            else:
+                msg = "无变化"
+        except Exception as exc:
+            msg = f"git 操作异常:{exc}"
     return {"ok": True, "pushed": pushed, "msg": msg}
 
 
@@ -396,7 +502,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/ping":
-            self._json({"ok": True, "ver": 2, "token": TOKEN, "env": bool(ENV.get("NEWAPI_USER")), "auto_push": AUTO_PUSH})
+            self._json({"ok": True, "ver": 3, "token": TOKEN, "env": bool(ENV.get("NEWAPI_USER")), "auto_push": AUTO_PUSH})
+        elif self.path == "/watch-status":
+            self._json({"ok": True, **WATCH.status()})
         elif self.path == "/snapshot":
             if not LOCK.acquire(blocking=False):
                 self._json({"error": "上一次检测还在进行中"}, 429)
@@ -432,9 +540,23 @@ class Handler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 self._json(save_all(body.get("rows") or [], body.get("columns") or [],
-                                    body.get("updated") or "", body.get("buttons")))
+                                    body.get("updated") or "", body.get("buttons"),
+                                    body.get("extras")))
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
+        elif self.path == "/open-excel":
+            try:
+                import os
+                os.startfile(str(siteexcel.SITES_XLSX))  # Windows:用默认表格程序(WPS/Excel)打开
+                self._json({"ok": True})
+            except Exception as e:
+                self._json({"ok": False, "msg": str(e)}, 500)
+        elif self.path == "/watch-start":
+            WATCH.start()
+            self._json({"ok": True, **WATCH.status()})
+        elif self.path == "/watch-stop":
+            WATCH.stop()
+            self._json({"ok": True, **WATCH.status()})
         else:
             self._json({"error": "not found"}, 404)
 

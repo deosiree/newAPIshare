@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-sites.csv 读写共享模块(CSV 是唯一数据源,UTF-8 带 BOM,Excel 双击即开)。
+sites.csv 兼容读写模块：仅用于备份和旧数据迁移，正常编辑链路使用 sites.xlsx。
 前端(src/fields.ts)与本文件必须使用同一套 字段名↔中文表头 映射。
 """
 import csv
@@ -40,7 +40,7 @@ def load_rows():
 
 
 def save_rows(rows, coldefs=None):
-    """按列序写回 sites.csv(UTF-8 BOM)。
+    """按列序写回 sites.csv(UTF-8 BOM)，仅作为兼容备份输出。
     coldefs: [(字段名, 表头)];默认 FIELDS + 行里出现的额外键(如 uid 自动保留)。"""
     if coldefs is None:
         extra, seen = [], {f for f, _ in FIELDS} | {HIDDEN_FIELD}

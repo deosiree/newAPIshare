@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-把 docs/ 里的 Excel 导入为网站数据源 public/sites.csv(CSV 是唯一数据源)。
+把 docs/ 里的 Excel 导入为网站数据源 public/sites.xlsx（XLSX 是唯一业务数据源，CSV 仅为备份导出）。
 
-日常更新推荐:直接用 Excel 打开 public/sites.csv 编辑,或 GitHub 网页改 CSV;
+日常更新推荐:直接用 Excel 打开 public/sites.xlsx 编辑,或通过编辑页修改后由同步助手写回 XLSX；CSV 仅用于备份导出;
 本脚本用于把 Excel 里的批量改动一次性导入。
 
 用法:
@@ -16,8 +16,8 @@ import openpyxl
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "tools"))
-import sitecsv
-from sitecsv import FIELDS
+import siteexcel
+from siteexcel import FIELDS
 
 DEFAULT_XLSX = ROOT / "docs" / "免费公益站统计合集（持续更新中.xlsx"
 SHEET_NAME = "工作表1(副本)"
@@ -27,7 +27,7 @@ SHEET_NAME = "工作表1(副本)"
 XLSX_FIELDS = ["name", "url", "status", "register", "daily", "invite",
                "model", "exp", "other", "rating", "verified"]
 
-# 导出时需要剔除的字段(绝不写入公开的 sites.csv),例如密钥类内容。
+# 导出时需要剔除的字段(绝不写入公开的 sites.xlsx),例如密钥类内容。
 PRIVATE_FIELDS = []
 
 
@@ -40,7 +40,7 @@ def clean(v):
 def load_rows(xlsx_path):
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
     ws = wb[SHEET_NAME]
-    existing = {r["name"]: r for r in sitecsv.load_rows()}
+    existing = {r["name"]: r for r in siteexcel.load_rows()}
     rows = []
     for row in ws.iter_rows(min_row=2, max_col=len(XLSX_FIELDS), values_only=True):
         item = {k: clean(v) for k, v in zip(XLSX_FIELDS, row)}
@@ -62,9 +62,9 @@ def main():
     if not xlsx.exists():
         sys.exit(f"找不到 Excel 文件: {xlsx}")
     rows = load_rows(xlsx)
-    sitecsv.save_rows(rows)
-    sitecsv.touch_updated()
-    print(f"完成: {len(rows)} 个站点 -> {sitecsv.SITES_CSV}")
+    siteexcel.save_rows(rows)
+    siteexcel.touch_updated()
+    print(f"完成: {len(rows)} 个站点 -> {siteexcel.SITES_XLSX}")
 
 
 if __name__ == "__main__":

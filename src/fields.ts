@@ -11,7 +11,13 @@ export interface ColumnDef {
   /** 小屏(<=760px)隐藏 */
   hs?: boolean
   width?: number
-  align?: 'center' | 'left'
+  align?: 'center' | 'left' | 'right'
+  /** 列级样式(编辑态「格式▾」设置,浏览态同步生效) */
+  bold?: boolean
+  italic?: boolean
+  wrap?: boolean
+  /** 冻结到左侧 */
+  pinned?: 'left'
 }
 
 export const BASE_COLUMNS: ColumnDef[] = [

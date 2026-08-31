@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 从浏览器书签导出(docs/bookmarks_2026_8_30.html,不入库)的 AI 目录下,
-按「与注册页同域名前缀」规则提取每个站点的签到地址,写入 data.js 的 checkin 字段。
+按「与注册页同域名前缀」规则提取每个站点的签到地址,写入 sites.xlsx 的 checkin 字段。
 
 匹配规则:
   1. 只看 AI 顶层目录(含其全部子目录,如 每日签到公益站/公益站 等)
@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-import sitecsv  # noqa: E402
+import siteexcel  # noqa: E402
 
 BOOKMARKS = ROOT / "docs" / "bookmarks_2026_8_30.html"
 CK_KEYWORDS = ("console", "checkin", "check-in", "sign", "dashboard", "panel", "home", "token", "work")
@@ -120,7 +120,7 @@ def main():
     print(f"书签共 {len(items)} 条,AI 目录下 {len(ai_items)} 条")
 
     data_file = None  # 已迁移到 CSV;保留变量占位避免下方引用报错
-    rows = sitecsv.load_rows()
+    rows = siteexcel.load_rows()
 
     by_host = {}
     for it in ai_items:
@@ -140,8 +140,8 @@ def main():
             r.pop("checkin", None)
             missed.append(f"{r['name']}({reg_host})")
 
-    sitecsv.save_rows(rows)
-    sitecsv.touch_updated()
+    siteexcel.save_rows(rows)
+    siteexcel.touch_updated()
     print(f"签到地址写入 {matched}/{len(rows)} 个站点")
     if missed:
         print("未找到同域名书签的站点:", "、".join(missed))

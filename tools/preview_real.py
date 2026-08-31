@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 真实只读校准:用 .env 账密登录本机 New API,抓取渠道数据并生成《同步预览》报告。
-**不写入 data.js** —— 真正的写入只能在网页私人视图里点「确认写入」。
+**不写入 sites.xlsx** —— 真正的写入只能在网页私人视图里点「确认写入」。
 
 用法: python tools/preview_real.py
 """
@@ -24,7 +24,7 @@ def main():
     lines = ["# 同步预览(真实 New API 只读检测)", "",
              f"检测时间:{datetime.now().strftime('%Y-%m-%d %H:%M')}",
              f"目标:{sync_server.ENV['NEWAPI_BASE_URL']}", "",
-             "> 本报告只读生成,**未写入** data.js。",
+             "> 本报告只读生成,**未写入** sites.xlsx。",
              "> 要真正写入:双击 `tools/启动同步工具.bat` → 打开网页(`?k=` 解锁私人视图)→ 点「检测 New API 渠道」→ 预览确认。", ""]
 
     # 先探活
@@ -57,7 +57,7 @@ def main():
         return 1
 
     changes, unmatched, scanned = build_changes(channels)
-    lines.append(f"扫描到 **{scanned}** 个渠道,与 data.js 匹配出 **{len(changes)}** 项可更新字段,"
+    lines.append(f"扫描到 **{scanned}** 个渠道,与 sites.xlsx 匹配出 **{len(changes)}** 项可更新字段,"
                  f"{len(unmatched)} 个渠道未匹配到站点。")
     if scanned >= 100:
         lines.append("")
@@ -71,7 +71,7 @@ def main():
             lines.append(f"| {c['name']} | {c['fieldLabel']} | {old} | **{c['value']}** |")
         lines.append("")
     else:
-        lines += ["所有匹配渠道的字段与 data.js 一致,无需更新。", ""]
+        lines += ["所有匹配渠道的字段与 sites.xlsx 一致,无需更新。", ""]
 
     if unmatched:
         lines += ["## 未匹配的渠道(不会写入)", ""]

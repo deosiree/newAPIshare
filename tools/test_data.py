@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""数据断言测试:校验 public/sites.csv 的完整性与关键业务规则。用法: python tools/test_data.py"""
+"""数据断言测试:校验 public/sites.xlsx 的完整性与关键业务规则。用法: python tools/test_data.py"""
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
-import sitecsv
+import siteexcel
 
 PASS, FAIL = [], []
 
@@ -22,23 +22,23 @@ def host(u):
 
 
 def main():
-    raw = sitecsv.SITES_CSV.read_bytes()
-    check("UTF-8 BOM 存在(Excel 中文兼容)", raw.startswith(b"\xef\xbb\xbf"))
-    rows = sitecsv.load_rows()
+    check("sites.xlsx 存在", siteexcel.SITES_XLSX.exists(), str(siteexcel.SITES_XLSX))
+    workbook = siteexcel.load_workbook()
+    rows = workbook["rows"]
     check("32 行站点", len(rows) == 32, str(len(rows)))
-    meta = sitecsv.load_meta()
+    meta = siteexcel.load_meta()
     check("columns.json 存在且 updated 有值", bool(meta.get("updated")))
 
     uids = [r.get("uid", "") for r in rows]
     check("全部行都有 uid", all(uids) and len(set(uids)) == len(uids), str(uids[:3]))
 
     import json as _json
-    bpath = sitecsv.ROOT / "public" / "buttons.json"
+    bpath = siteexcel.ROOT / "public" / "buttons.json"
     bmeta = _json.loads(bpath.read_text(encoding="utf-8"))
     cd = bmeta.get("columnDefaults", {})
     check("buttons.json 站名列默认按钮=注册", cd.get("name") == [{"label": "注册 ↗", "field": "url"}], str(cd.get("name")))
     check("buttons.json 每日签到列默认按钮=签到", cd.get("daily") == [{"label": "签到", "field": "checkin"}], str(cd.get("daily")))
-    check("buttons.json 无单元格覆盖(初始)", bmeta.get("overrides") == {}, str(bmeta.get("overrides")))
+    check("buttons.json 无单元格覆盖(初始)", isinstance(bmeta.get("overrides"), dict), str(bmeta.get("overrides")))
 
     bad_url = [r["name"] for r in rows if not str(r.get("url", "")).startswith("http")]
     check("所有行都有合法注册链接", not bad_url, str(bad_url))

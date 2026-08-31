@@ -1,14 +1,22 @@
 import { useMemo, useState } from 'react'
 import type { Row, SiteData } from '../lib/data'
 import type { ColumnDef } from '../fields'
-import { cellButtons, isRowHidden } from '../lib/data'
+import { cellButtons, cellStyleFor, isRowHidden } from '../lib/data'
 
+/** 将状态文本归类为公开页筛选桶。
+ * @param s 状态文本
+ * @returns 状态分类
+ */
 function bucketOf(s?: string): 'ok' | 'dead' | 'unknown' {
   if (s === '有效' || s === '复活了') return 'ok'
   if (s === '失效' || s === '无效') return 'dead'
   return 'unknown'
 }
 
+/** 根据列宽选择公开表格的 CSS 宽度档位。
+ * @param c 列定义
+ * @returns 宽度 CSS 类名
+ */
 function widthClass(c: ColumnDef): string {
   const w = c.width ?? 0
   return w >= 300 ? 'l' : w >= 120 ? 'm' : ''
@@ -23,6 +31,11 @@ const STATUS_CHIPS: StatusChip[] = [
 ]
 const RATING_ORDER = ['顶级', '夯', 'NPC', '拉']
 
+/** 渲染公开浏览态表格，并将 XLSX 保存的公开单元格样式映射到对应单元格。
+ * @param data 已加载的站点数据，包含行、列、按钮和 Excel 样式
+ * @param unlocked 是否显示私有视图
+ * @returns 公开浏览态页面
+ */
 export default function Browse({ data, unlocked }: { data: SiteData | null; unlocked: boolean }) {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
@@ -136,9 +149,10 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                   const v = r[c.field]
                   const wcls = widthClass(c)
                   const btns = cellButtons(r, c.field, data.buttons).filter((b) => r[b.field])
+                  const cellStyle = cellStyleFor(r, c.field, data.styles)
                   if (c.type === 'name') {
                     return (
-                      <td key={c.field} className="stick nw">
+                      <td key={c.field} className="stick nw" style={cellStyle}>
                         <span className="sname">{r.name}</span>
                         {btns.length > 0 && (
                           <span className="btns">
@@ -152,20 +166,20 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                   }
                   if (c.type === 'status') {
                     const b = bucketOf(r.status)
-                    return <td key={c.field} className="nw"><span className={'badge b-' + b}>{r.status || '未标注'}</span></td>
+                    return <td key={c.field} className="nw" style={cellStyle}><span className={'badge b-' + b}>{r.status || '未标注'}</span></td>
                   }
                   if (c.type === 'rating') {
-                    if (!r.rating) return <td key={c.field} />
-                    return <td key={c.field} className="nw"><span className={'badge r-' + r.rating}>{r.rating}</span></td>
+                    if (!r.rating) return <td key={c.field} style={cellStyle} />
+                    return <td key={c.field} className="nw" style={cellStyle}><span className={'badge r-' + r.rating}>{r.rating}</span></td>
                   }
                   if (c.type === 'apistatus') {
-                    if (!v) return <td key={c.field} />
+                    if (!v) return <td key={c.field} style={cellStyle} />
                     const b = String(v).includes('正常') ? 'b-ok' : String(v).includes('异常') ? 'b-dead' : 'b-unk'
-                    return <td key={c.field} className="nw"><span className={'badge ' + b}>{v}</span></td>
+                    return <td key={c.field} className="nw" style={cellStyle}><span className={'badge ' + b}>{v}</span></td>
                   }
-                  if (!v && btns.length === 0) return <td key={c.field} />
+                  if (!v && btns.length === 0) return <td key={c.field} style={cellStyle} />
                   return (
-                    <td key={c.field} className={[wcls, c.hs ? 'hs' : ''].join(' ')}>
+                    <td key={c.field} className={[wcls, c.hs ? 'hs' : ''].join(' ')} style={cellStyle}>
                       {v && (
                         <span className={String(v).length > 90 ? 'clamp3' : ''} title={String(v).length > 90 ? v : undefined}>{v}</span>
                       )}

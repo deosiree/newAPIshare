@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
-import sitecsv  # noqa: E402
+import siteexcel  # noqa: E402
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
       "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
       "Accept-Language": "zh-CN,zh;q=0.9"}
@@ -37,7 +37,7 @@ def probe(url):
 
 
 def main():
-    rows = sitecsv.load_rows()
+    rows = siteexcel.load_rows()
     targets = []
     for r in rows:
         if r.get("url"):

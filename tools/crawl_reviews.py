@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-爬取三个评价源,与 data.js 现有站点做模糊匹配,把评价写入「其他2/3/4」列。
+爬取三个评价源,与 sites.xlsx 现有站点做模糊匹配,把评价写入「其他2/3/4」列。
 
   其他2 = baipiao.org/charity/     (白嫖org 简评+标签+运营状态)
   其他3 = docs/免费公益站统计合集（持续更新中）.docx (飞书合集:档位+注意事项)
@@ -10,7 +10,7 @@
 安全规则:候选结果若双方都已知域名且不同,视为同名不同站,拒绝写入,记录进报告。
 
 用法: python tools/crawl_reviews.py
-输出: 更新 data.js 的 other2/other3/other4 字段 + docs/采集报告.md
+输出: 更新 sites.xlsx 的 other2/other3/other4 字段 + docs/采集报告.md
 """
 import json
 import re
@@ -22,13 +22,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-import sitecsv  # noqa: E402
+import siteexcel  # noqa: E402
 
 CACHE = ROOT / "tools" / "cache"
 DOCS = ROOT / "docs"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# 别名表: 源站叫法 -> 我们 data.js 里的站名(允许近似拼写,匹配时自动对齐真实站名)
+# 别名表: 源站叫法 -> 我们 sites.xlsx 里的站名(允许近似拼写,匹配时自动对齐真实站名)
 ALIASES = {
     "新疆幻城": "幻城",
     "iamhc公益站": "幻城",
@@ -273,7 +273,7 @@ def main():
           f"源3 飞书docx: {len(src3)} 条 + {len(docx_notes)} 条注意")
 
     # 2. 读现有数据
-    rows = sitecsv.load_rows()
+    rows = siteexcel.load_rows()
 
     match, name_to_row = build_matcher(rows)
 
@@ -330,9 +330,9 @@ def main():
                 r[col] = text
     counts = {col: sum(1 for r in rows if r.get(col)) for col in ("other2", "other3", "other4")}
 
-    # 4. 写回 sites.csv
-    sitecsv.save_rows(rows)
-    sitecsv.touch_updated()
+    # 4. 写回 sites.xlsx
+    siteexcel.save_rows(rows)
+    siteexcel.touch_updated()
 
     # 5. 采集报告
     rep = ["# 采集报告", "", f"采集日期:{date.today().isoformat()}", ""]
@@ -357,7 +357,7 @@ def main():
     rep.append("、".join(our) if our else "(无)")
     out = DOCS / "采集报告.md"
     out.write_text("\n".join(rep) + "\n", encoding="utf-8")
-    print(f"data.js 已更新:其他2={counts['other2']} 其他3={counts['other3']} 其他4={counts['other4']}")
+    print(f"sites.xlsx 已更新:其他2={counts['other2']} 其他3={counts['other3']} 其他4={counts['other4']}")
     print(f"报告 -> {out}")
 
 
