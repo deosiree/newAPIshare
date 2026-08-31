@@ -116,11 +116,6 @@
       "type": "link",
       "hidden": true,
       "width": 150
-    },
-    {
-      "field": "uid",
-      "header": "uid",
-      "hidden": true
     }
   ]
 }
