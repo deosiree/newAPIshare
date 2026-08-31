@@ -1,11 +1,11 @@
 {
-  "updated": "2026-08-30",
+  "views": [],
+  "rules": [],
+  "editor": {
+    "rowHeight": 46
+  },
+  "updated": "2026-08-31",
   "columns": [
-    {
-      "field": "uid",
-      "header": "uid",
-      "hidden": true
-    },
     {
       "field": "name",
       "header": "公益站",
@@ -84,15 +84,42 @@
       "width": 70
     },
     {
+      "field": "models",
+      "header": "模型",
+      "pri": true,
+      "hs": true,
+      "width": 320
+    },
+    {
+      "field": "latency",
+      "header": "响应",
+      "pri": true,
+      "width": 70
+    },
+    {
+      "field": "api_status",
+      "header": "渠道状态",
+      "type": "apistatus",
+      "pri": true,
+      "width": 110
+    },
+    {
       "field": "url",
       "header": "注册链接",
       "type": "link",
-      "hidden": true
+      "hidden": true,
+      "width": 150
     },
     {
       "field": "checkin",
       "header": "签到地址",
       "type": "link",
+      "hidden": true,
+      "width": 150
+    },
+    {
+      "field": "uid",
+      "header": "uid",
       "hidden": true
     }
   ]

@@ -13,5 +13,10 @@
       }
     ]
   },
-  "overrides": {}
+  "overrides": {
+    "fa3fe23d|daily": null,
+    "c5de4347|daily": null,
+    "8b261503|daily": null,
+    "998d5e4b|daily": null
+  }
 }
