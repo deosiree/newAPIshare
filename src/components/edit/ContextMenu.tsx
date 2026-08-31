@@ -97,7 +97,7 @@ export default function ContextMenu({
     measure()
     const frame = window.requestAnimationFrame(measure)
     return () => window.cancelAnimationFrame(frame)
-  }, [measure, target])
+  }, [buttons.length, measure, target])
 
   useLayoutEffect(() => {
     if (!target) return
