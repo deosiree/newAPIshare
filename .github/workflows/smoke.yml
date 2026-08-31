@@ -23,5 +23,6 @@ jobs:
       - name: 产物冒烟
         run: |
           test -f dist/index.html
-          test -f dist/sites.csv
+          test -f dist/sites.xlsx
           test -f dist/columns.json
+          test -f dist/buttons.json

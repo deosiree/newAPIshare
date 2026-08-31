@@ -8,8 +8,20 @@
 - 编辑态网格内直接渲染按钮(与文本同行);浏览态按钮渲染泛化到任意列
 - 助手修复:load_env 链式读取(.env/.env.development/.env.production)恢复自动登录;实例令牌握手防 Windows 端口双绑打到旧进程;客户端识别助手版本过旧(404)并明确提示重启
 
-**测试**:test_data 19/19 · test_sync 36/36 · tsc/vite build ✓ · 编辑态截图(按钮 chip 内联可见)
+**测试**:历史阶段 test_data 19/19 · 历史阶段 test_sync 36/36 · tsc/vite build ✓ · 编辑态截图(按钮 chip 内联可见)
 
 **回滚点**:commit 见 git log(release-2026-08-30-1)
 
 > ⚠️ 运维提醒:同步助手黑窗口运行的是启动时的代码;仓库更新后必须关闭并重新启动 tools/启动同步工具.bat
+
+
+## release-2026-08-31 · Excel 编辑器重构
+
+**内容**
+- `public/sites.xlsx` 成为唯一业务数据与表格格式来源；CSV 降级为备份导出/迁移输入。
+- 编辑态抽离工具栏、右键菜单、格式面板和工作簿操作；样式、行高、列宽进入快照事务。
+- `/edit` 原生右键生命周期禁用，自定义菜单 Portal 自适应定位并可滚动。
+- 支持使用 `uid` 的未排序/未筛选行头拖拽排序；排序或筛选状态下给出提示并拒绝拖拽。
+- 浏览态显示 XLSX 中保存的公开单元格样式；低代码自由排版暂不支持。
+
+**验证**：TypeScript、Vite build、Vitest、Python 编译、XLSX 数据测试通过；同步助手 Playwright 集成测试需本机安装 Python Playwright 后执行。

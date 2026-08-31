@@ -13,10 +13,10 @@ describe('resolveMenuPosition', () => {
       left: 812, top: 100, maxHeight: 784,
     })
   })
-})
 
   it('keeps an oversized menu inside the viewport', () => {
     expect(resolveMenuPosition({ x: 200, y: 850, width: 180, height: 622, viewportWidth: 1280, viewportHeight: 720 })).toEqual({
       left: 200, top: 90, maxHeight: 704,
     })
   })
+})
