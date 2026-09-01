@@ -4,7 +4,9 @@
   "editor": {
     "rowHeight": 46
   },
-  "updated": "2026-08-31",
+  "layouts": {},
+  "merges": [],
+  "updated": "2026-09-01",
   "columns": [
     {
       "field": "name",
@@ -61,47 +63,27 @@
       "width": 320
     },
     {
-      "field": "other2",
-      "header": "其他2·白嫖org",
-      "hs": true,
-      "width": 320
-    },
-    {
-      "field": "other3",
-      "header": "其他3·飞书合集",
-      "hs": true,
-      "width": 320
-    },
-    {
-      "field": "other4",
-      "header": "其他4·幻城导航",
-      "hs": true,
-      "width": 320
-    },
-    {
-      "field": "verified",
-      "header": "验证",
-      "width": 70
-    },
-    {
       "field": "models",
       "header": "模型",
       "pri": true,
       "hs": true,
-      "width": 320
+      "width": 320,
+      "hidden": true
     },
     {
       "field": "latency",
       "header": "响应",
       "pri": true,
-      "width": 70
+      "width": 70,
+      "hidden": true
     },
     {
       "field": "api_status",
       "header": "渠道状态",
       "type": "apistatus",
       "pri": true,
-      "width": 110
+      "width": 110,
+      "hidden": true
     },
     {
       "field": "url",
