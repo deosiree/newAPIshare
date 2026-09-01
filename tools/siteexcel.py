@@ -25,6 +25,102 @@ FIELDS = [
 ]
 HIDDEN_FIELD, HIDDEN_HEADER = "hidden", "隐藏"
 FIELD_BY_HEADER = {header: field for field, header in FIELDS} | {HIDDEN_HEADER: HIDDEN_FIELD, "uid": "uid"}
+LAYOUT_SHEET_NAME = "__newAPIshare_layout"
+LAYOUT_HEADERS = ["version", "scope", "uid", "field", "direction", "textAlign", "buttonAlign", "buttonFlow", "buttonCount", "gap"]
+
+
+def _read_merge_ranges(workbook):
+    """读取第一张工作表的合并范围并规范为 Excel A1 地址。"""
+    if not workbook.worksheets:
+        return []
+    worksheet = workbook.worksheets[0]
+    return [str(range_ref) for range_ref in worksheet.merged_cells.ranges]
+
+
+def _write_merge_ranges(workbook, merges):
+    """清除主工作表旧合并范围并写入新的合并范围。"""
+    if not workbook.worksheets:
+        return
+    worksheet = workbook.worksheets[0]
+    for range_ref in list(worksheet.merged_cells.ranges):
+        worksheet.unmerge_cells(str(range_ref))
+    for range_ref in merges or []:
+        try:
+            worksheet.merge_cells(str(range_ref))
+        except (TypeError, ValueError):
+            continue
+
+
+def _normalise_layout(value):
+    """将布局记录归一化为稳定的双层布局结构。"""
+    value = value or {}
+    nested = value.get("buttonGroup") or {}
+    flow_value = nested.get("flow", value.get("buttonFlow", nested.get("mode")))
+    if flow_value in ("column", "horizontal", "grid-column-2"):
+        flow = "column"
+    else:
+        flow = "row"
+    align = nested.get("align", value.get("buttonAlign"))
+    if align not in ("left", "center", "right"):
+        align = "center"
+    direction = value.get("direction") if value.get("direction") in ("row", "column") else "column"
+    count_value = nested.get("count", value.get("buttonCount", 1))
+    count = count_value if isinstance(count_value, int) and not isinstance(count_value, bool) else 1
+    count = max(1, min(100, count))
+    gap_value = nested.get("gap", value.get("gap", 8))
+    gap = gap_value if isinstance(gap_value, (int, float)) and not isinstance(gap_value, bool) else 8
+    gap = max(0, min(48, gap))
+    return {"direction": direction, "textAlign": "center", "buttonGroup": {"align": align, "flow": flow, "count": count, "gap": gap}}
+
+
+def _read_layouts(workbook):
+    """读取隐藏布局工作表，忽略不完整或未知作用域记录。"""
+    worksheet = workbook[LAYOUT_SHEET_NAME] if LAYOUT_SHEET_NAME in workbook.sheetnames else None
+    if worksheet is None:
+        return {}
+    layouts = {}
+    for row in worksheet.iter_rows(min_row=2, values_only=True):
+        scope = _clean(row[1] if len(row) > 1 else "")
+        uid = _clean(row[2] if len(row) > 2 else "")
+        field = _clean(row[3] if len(row) > 3 else "")
+        if not field or scope not in ("cell", "column") or (scope == "cell" and not uid):
+            continue
+        value = {"direction": row[4] if len(row) > 4 else None,
+                 "textAlign": row[5] if len(row) > 5 else None,
+                 "buttonAlign": row[6] if len(row) > 6 else None,
+                 "buttonFlow": row[7] if len(row) > 7 else None,
+                 "buttonCount": row[8] if len(row) > 8 else None,
+                 "gap": row[9] if len(row) > 9 else None}
+        key = f"cell:{uid}|{field}" if scope == "cell" else f"column:{field}"
+        layouts[key] = _normalise_layout(value)
+    return layouts
+
+
+def _write_layouts(workbook, layouts):
+    """将布局记录写入隐藏工作表并清理旧记录。"""
+    worksheet = workbook[LAYOUT_SHEET_NAME] if LAYOUT_SHEET_NAME in workbook.sheetnames else workbook.create_sheet(LAYOUT_SHEET_NAME)
+    worksheet.sheet_state = "hidden"
+    if worksheet.max_row:
+        worksheet.delete_rows(1, worksheet.max_row)
+    worksheet.append(LAYOUT_HEADERS)
+    for key, value in (layouts or {}).items():
+        is_cell = str(key).startswith("cell:")
+        is_column = str(key).startswith("column:")
+        if not is_cell and not is_column:
+            continue
+        raw = str(key)[5:] if is_cell else str(key)[7:]
+        if is_cell:
+            uid, separator, field = raw.partition("|")
+            if not separator or not uid or not field:
+                continue
+            scope = "cell"
+        else:
+            uid, field, scope = "", raw, "column"
+            if not field:
+                continue
+        layout = _normalise_layout(value)
+        group = layout["buttonGroup"]
+        worksheet.append([1, scope, uid, field, layout["direction"], layout["textAlign"], group["align"], group["flow"], group["count"], group["gap"]])
 
 
 def _clean(value):
@@ -87,6 +183,8 @@ def load_workbook(path=SITES_XLSX, columns_meta=None):
             columns.append(definition)
     all_columns = [_column_def(header, meta_by_header, worksheet.column_dimensions[get_column_letter(index)].width) for index, header in enumerate(headers, start=1)]
     rows, styles, row_heights, column_widths = [], {}, {}, {}
+    layouts = _read_layouts(workbook)
+    merges = _read_merge_ranges(workbook)
     for index, column in enumerate(all_columns, start=1):
         width = worksheet.column_dimensions[get_column_letter(index)].width
         if width is not None:
@@ -109,6 +207,8 @@ def load_workbook(path=SITES_XLSX, columns_meta=None):
         "styles": styles,
         "row_heights": row_heights,
         "column_widths": column_widths,
+        "layouts": layouts,
+        "merges": merges,
         "worksheet_name": worksheet.title,
         "sheet_names": workbook.sheetnames,
     }
@@ -137,6 +237,7 @@ def save_workbook(path, document):
         except Exception as exc:
             raise ValueError(f"XLSX 工作簿读取失败: {exc}") from exc
     worksheet = workbook.worksheets[0]
+    _write_merge_ranges(workbook, [])
     if worksheet.max_row:
         worksheet.delete_rows(1, worksheet.max_row)
     rows = document.get("rows") or []
@@ -149,6 +250,8 @@ def save_workbook(path, document):
     styles = document.get("styles") or {}
     row_heights = {int(key): value for key, value in (document.get("row_heights") or document.get("rowHeights") or {}).items()}
     column_widths = document.get("column_widths") or document.get("columnWidths") or {}
+    layouts = document.get("layouts") or {}
+    merges = document.get("merges") or []
     for row_index, item in enumerate(rows, start=2):
         worksheet.append([item.get(field) or "" for field in fields])
         if row_index in row_heights:
@@ -157,9 +260,11 @@ def save_workbook(path, document):
             style = styles.get(str(item.get("uid", "")) + "|" + str(column.get("field")))
             if style:
                 _apply_style(worksheet.cell(row_index, column_index), style)
+    _write_merge_ranges(workbook, merges)
     for letter, width in column_widths.items():
         worksheet.column_dimensions[str(letter)].width = width
     worksheet.freeze_panes = "A2"
+    _write_layouts(workbook, layouts)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(prefix=path.stem + ".", suffix=".tmp.xlsx", dir=path.parent, delete=False) as tmp:
         temp_path = Path(tmp.name)
@@ -248,7 +353,7 @@ def _normalise_columns(coldefs, current):
 
 def save_rows(rows, coldefs=None, path=SITES_XLSX):
     current = load_workbook(path, _load_columns_meta()) if Path(path).exists() else {
-        'rows': [], 'columns': [], 'styles': {}, 'row_heights': {}, 'column_widths': {}
+        'rows': [], 'columns': [], 'styles': {}, 'row_heights': {}, 'column_widths': {}, 'layouts': {}, 'merges': []
     }
     document = {
         'rows': rows,
@@ -256,5 +361,7 @@ def save_rows(rows, coldefs=None, path=SITES_XLSX):
         'styles': current.get('styles') or {},
         'row_heights': current.get('row_heights') or {},
         'column_widths': current.get('column_widths') or {},
+        'layouts': current.get('layouts') or {},
+        'merges': current.get('merges') or [],
     }
     return save_workbook(path, document)

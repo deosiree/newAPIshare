@@ -426,6 +426,8 @@ def merge_workbook_extras(current, extras):
         "styles": extras["styles"] if "styles" in extras else current.get("styles") or {},
         "row_heights": extras["rowHeights"] if "rowHeights" in extras else current.get("row_heights") or {},
         "column_widths": extras["columnWidths"] if "columnWidths" in extras else current.get("column_widths") or {},
+        "layouts": extras["layouts"] if "layouts" in extras else current.get("layouts") or {},
+        "merges": extras["merges"] if "merges" in extras else current.get("merges") or [],
     }
 
 
@@ -447,7 +449,7 @@ def save_all(rows, columns, updated, buttons=None, extras=None):
     })
     siteexcel.save_workbook(siteexcel.SITES_XLSX, document)
 
-    meta = {key: value for key, value in extras.items() if key not in {"styles", "rowHeights", "columnWidths"}}
+    meta = {key: value for key, value in extras.items() if key not in {"styles", "rowHeights", "columnWidths", "layouts", "merges"}}
     meta["updated"] = updated or date.today().isoformat()
     meta["columns"] = columns
     siteexcel.save_meta(meta)

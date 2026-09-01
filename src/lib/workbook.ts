@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { ButtonsMeta, Row } from './data'
 import type { ColumnDef } from '../fields'
+import { cellLayoutKey, columnLayoutKey, normalizeCellLayout, type CellLayout } from './cellLayout'
 
 export interface CellFontStyle {
   bold?: boolean
@@ -56,8 +57,81 @@ export interface WorkbookDocument {
   styles: Record<string, CellStyle>
   rowHeights: Record<number, number>
   columnWidths: Record<string, number>
+  layouts: Record<string, CellLayout>
+  merges: string[]
   worksheetName: string
   workbook: ExcelJS.Workbook
+}
+
+/**
+ * 读取 ExcelJS 工作表中的合并范围并转换为 A1 地址。
+ * @param worksheet 主工作表
+ * @returns 合并范围地址列表
+ */
+function readMergeRanges(worksheet: ExcelJS.Worksheet): string[] {
+  const merges = (worksheet as any)._merges ?? {}
+  return Object.values(merges).map((range: any) => {
+    const model = range?.model
+    if (!model) return ''
+    const start = worksheet.getCell(model.top, model.left).address
+    const end = worksheet.getCell(model.bottom, model.right).address
+    return start + ':' + end
+  }).filter(Boolean)
+}
+
+const LAYOUT_SHEET_NAME = '__newAPIshare_layout'
+const LAYOUT_HEADERS = ['version', 'scope', 'uid', 'field', 'direction', 'textAlign', 'buttonAlign', 'buttonFlow', 'buttonCount', 'gap'] as const
+
+/** 读取隐藏布局工作表并转换为应用布局记录。
+ * @param workbook ExcelJS 工作簿
+ * @returns 已归一化的布局记录
+ */
+function readLayouts(workbook: ExcelJS.Workbook): Record<string, CellLayout> {
+  const worksheet = workbook.getWorksheet(LAYOUT_SHEET_NAME)
+  if (!worksheet) return {}
+  const layouts: Record<string, CellLayout> = {}
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    const scope = String(row.getCell(2).value ?? '').trim()
+    const uid = String(row.getCell(3).value ?? '').trim()
+    const field = String(row.getCell(4).value ?? '').trim()
+    if (!field || (scope !== 'cell' && scope !== 'column') || (scope === 'cell' && !uid)) return
+    const input = {
+      direction: row.getCell(5).value,
+      textAlign: row.getCell(6).value,
+      buttonAlign: row.getCell(7).value,
+      buttonFlow: row.getCell(8).value,
+      buttonCount: row.getCell(9).value,
+      gap: row.getCell(10).value,
+    }
+    const key = scope === 'cell' ? cellLayoutKey(uid, field) : columnLayoutKey(field)
+    layouts[key] = normalizeCellLayout(input)
+  })
+  return layouts
+}
+
+/** 将布局记录写入隐藏工作表，并清除已删除的旧布局。
+ * @param workbook ExcelJS 工作簿
+ * @param layouts 当前布局记录
+ * @returns 无返回值
+ */
+function writeLayouts(workbook: ExcelJS.Workbook, layouts: Record<string, CellLayout>): void {
+  const worksheet = workbook.getWorksheet(LAYOUT_SHEET_NAME) ?? workbook.addWorksheet(LAYOUT_SHEET_NAME)
+  worksheet.state = 'hidden'
+  while (worksheet.rowCount > 0) worksheet.spliceRows(1, 1)
+  worksheet.addRow([...LAYOUT_HEADERS])
+  Object.entries(layouts).forEach(([key, value]) => {
+    const isCell = key.startsWith('cell:')
+    const isColumn = key.startsWith('column:')
+    if (!isCell && !isColumn) return
+    const normalized = normalizeCellLayout(value)
+    const raw = isCell ? key.slice(5) : key.slice(7)
+    const separator = isCell ? raw.indexOf('|') : -1
+    const uid = isCell && separator >= 0 ? raw.slice(0, separator) : ''
+    const field = isCell && separator >= 0 ? raw.slice(separator + 1) : raw
+    if (!field || (isCell && !uid)) return
+    worksheet.addRow([1, isCell ? 'cell' : 'column', uid, field, normalized.direction, normalized.textAlign, normalized.buttonGroup.align, normalized.buttonGroup.flow, normalized.buttonGroup.count, normalized.buttonGroup.gap])
+  })
 }
 
 const HEADER_FIELD_MAP: Record<string, string> = {
@@ -152,6 +226,8 @@ export async function loadWorkbook(input: ArrayBuffer | Uint8Array, columnsMeta?
   const styles: Record<string, CellStyle> = {}
   const rowHeights: Record<number, number> = {}
   const columnWidths: Record<string, number> = {}
+  const layouts = readLayouts(workbook)
+  const merges = readMergeRanges(worksheet)
   allColumns.forEach((_column, index) => {
     const excelColumn = worksheet.getColumn(index + 1)
     if (excelColumn.width != null) columnWidths[excelColumn.letter] = excelColumn.width
@@ -168,7 +244,7 @@ export async function loadWorkbook(input: ArrayBuffer | Uint8Array, columnsMeta?
       if (style) styles[item.uid + '|' + column.field] = style
     })
   })
-  return { rows, columns, styles, rowHeights, columnWidths, worksheetName: worksheet.name, workbook }
+  return { rows, columns, styles, rowHeights, columnWidths, layouts, merges, worksheetName: worksheet.name, workbook }
 }
 
 /** 将编辑器快照写回第一张工作表，并返回新的 XLSX 二进制内容。 */
@@ -182,7 +258,9 @@ export async function saveWorkbook(document: WorkbookDocument): Promise<Uint8Arr
   if (!worksheet) throw new Error('XLSX 工作簿缺少第一张工作表')
   const hasHidden = document.rows.some((row) => 'hidden' in row)
   const hasUid = document.rows.some((row) => row.uid)
-  const headers = (hasHidden ? ['隐藏'] : []).concat(document.columns.map((column) => column.header))
+  const existingMerges = readMergeRanges(worksheet)
+  existingMerges.forEach((range) => worksheet.unMergeCells(range))
+  const headers = (hasHidden ? ['闅愯棌'] : []).concat(document.columns.map((column) => column.header))
   if (hasUid) headers.push('uid')
   const fields = (hasHidden ? ['hidden'] : []).concat(document.columns.map((column) => column.field))
   if (hasUid) fields.push('uid')
@@ -212,6 +290,8 @@ export async function saveWorkbook(document: WorkbookDocument): Promise<Uint8Arr
       if (style.fillColor) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + style.fillColor.replace('#', '') } }
       cell.alignment = { horizontal: style.horizontal, vertical: style.vertical, wrapText: style.wrapText }
     })  })
+  ;(document.merges ?? []).forEach((range) => worksheet.mergeCells(range))
+  writeLayouts(document.workbook, document.layouts ?? {})
   for (let columnNumber = 1; columnNumber <= worksheet.columnCount; columnNumber += 1) {
     const column = worksheet.getColumn(columnNumber)
     column.width = document.columnWidths[column.letter] ?? undefined
@@ -227,6 +307,6 @@ export async function saveWorkbook(document: WorkbookDocument): Promise<Uint8Arr
  * @param extras 视图等扩展元数据
  * @returns 同步助手可接受的请求载荷
  */
-export function workbookPayload(document: Pick<WorkbookDocument, 'rows' | 'columns' | 'styles' | 'rowHeights' | 'columnWidths'>, buttons?: ButtonsMeta, extras?: Record<string, unknown>): Record<string, unknown> {
-  return { rows: document.rows, columns: document.columns, styles: document.styles, rowHeights: document.rowHeights, columnWidths: document.columnWidths, buttons, extras }
+export function workbookPayload(document: Pick<WorkbookDocument, 'rows' | 'columns' | 'styles' | 'rowHeights' | 'columnWidths' | 'layouts' | 'merges'>, buttons?: ButtonsMeta, extras?: Record<string, unknown>): Record<string, unknown> {
+  return { rows: document.rows, columns: document.columns, styles: document.styles, rowHeights: document.rowHeights, columnWidths: document.columnWidths, layouts: document.layouts, merges: document.merges, buttons, extras }
 }

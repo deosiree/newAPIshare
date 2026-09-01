@@ -36,3 +36,13 @@ export function applyCellStylePatch(
   })
   return next
 }
+
+
+/** 深拷贝单元格格式供格式刷使用，不复制文本、按钮配置或布局。
+ * @param source 来源单元格样式
+ * @returns 可安全应用到目标单元格的新样式对象
+ */
+export function copyCellStyle(source?: CellStyle): CellStyle {
+  if (!source) return {}
+  return { ...source, font: source.font ? { ...source.font } : undefined }
+}

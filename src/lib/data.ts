@@ -1,5 +1,6 @@
 /** 数据加载：public/sites.xlsx(唯一业务数据源) + public/columns.json(列布局) + public/buttons.json(单元格按钮)。 */
 import { loadWorkbook, type CellStyle } from './workbook'
+import type { CellLayout } from './cellLayout'
 import { BASE_COLUMNS, HIDDEN_ROW_HEADER, HIDDEN_ROW_FIELD, type ColumnDef } from '../fields'
 
 export type Row = Record<string, string>
@@ -38,6 +39,8 @@ export interface SiteData {
   styles: Record<string, CellStyle>
   rowHeights: Record<number, number>
   columnWidths: Record<string, number>
+  layouts: Record<string, CellLayout>
+  merges: string[]
   updated?: string
 }
 
@@ -68,6 +71,8 @@ export async function loadSiteData(): Promise<SiteData> {
     styles: workbook.styles,
     rowHeights: workbook.rowHeights,
     columnWidths: workbook.columnWidths,
+    layouts: workbook.layouts,
+    merges: workbook.merges,
     updated: meta.updated,
   }
 }
@@ -81,15 +86,15 @@ export async function loadSiteData(): Promise<SiteData> {
 export function cellStyleFor(row: Row, field: string, styles?: Record<string, CellStyle>): Record<string, string | number> {
   const style = styles?.[row.uid + '|' + field]
   if (!style) return {}
-  return {
-    color: style.font?.color ?? '',
-    backgroundColor: style.fillColor ?? '',
-    fontWeight: style.font?.bold ? 700 : '',
-    fontStyle: style.font?.italic ? 'italic' : '',
-    textAlign: style.horizontal ?? '',
-    verticalAlign: style.vertical === 'middle' ? 'middle' : style.vertical ?? '',
-    whiteSpace: style.wrapText ? 'pre-wrap' : '',
-  }
+  const result: Record<string, string | number> = {}
+  if (style.font?.color) result.color = style.font.color
+  if (style.fillColor) result.backgroundColor = style.fillColor
+  if (style.font?.bold) result.fontWeight = 700
+  if (style.font?.italic) result.fontStyle = 'italic'
+  if (style.horizontal) result.textAlign = style.horizontal
+  if (style.vertical) result.verticalAlign = style.vertical
+  if (style.wrapText) result.whiteSpace = 'pre-wrap'
+  return result
 }
 
 /**

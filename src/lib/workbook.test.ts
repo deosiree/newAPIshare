@@ -1,79 +1,113 @@
-import { describe, expect, it } from 'vitest'
-import ExcelJS from 'exceljs'
-import { loadWorkbook, saveWorkbook } from './workbook'
+﻿import { describe, expect, it } from "vitest"
+import ExcelJS from "exceljs"
+import { cellLayoutKey, columnLayoutKey } from "./cellLayout"
+import { loadWorkbook, saveWorkbook } from "./workbook"
 
-describe('workbook', () => {
-  it('读取并写回第一张工作表的数据、样式、行高、列宽，同时保留其他工作表', async () => {
+describe("workbook", () => {
+  it("reads and writes the first worksheet while preserving styles, sizes, and other sheets", async () => {
     const source = new ExcelJS.Workbook()
-    const main = source.addWorksheet('站点')
-    main.columns = [{ header: '公益站', key: 'name', width: 28 }, { header: '状态', key: 'status', width: 14 }]
-    main.addRow({ name: '示例站', status: '有效' })
-    main.getCell('A2').font = { bold: true, color: { argb: 'FFFF0000' } }
-    main.getCell('B2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+    const main = source.addWorksheet("main")
+    main.columns = [{ header: "name", key: "name", width: 28 }, { header: "status", key: "status", width: 14 }]
+    main.addRow({ name: "demo", status: "valid" })
+    main.getCell("A2").font = { bold: true, color: { argb: "FFFF0000" } }
+    main.getCell("B2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } }
     main.getRow(2).height = 32
-    source.addWorksheet('说明').getCell('A1').value = '保留内容'
-    const original = await source.xlsx.writeBuffer()
-
-    const document = await loadWorkbook(original)
-    expect(document.rows).toEqual([{ name: '示例站', status: '有效', uid: 'row-1' }])
+    source.addWorksheet("extra").getCell("A1").value = "keep me"
+    const document = await loadWorkbook(await source.xlsx.writeBuffer())
+    expect(document.rows).toEqual([{ name: "demo", status: "valid", uid: "row-1" }])
     expect(document.columns[0].width).toBe(28)
-    expect(document.rows[0].uid).toBeTruthy()
-    const nameStyle = Object.values(document.styles).find((style) => style.font?.bold)
-    expect(nameStyle?.font?.bold).toBe(true)
-    expect(nameStyle?.font?.color).toBe('#FF0000')
+    expect(document.styles["row-1|name"].font?.bold).toBe(true)
+    expect(document.styles["row-1|name"].font?.color).toBe("#FF0000")
     expect(document.rowHeights[2]).toBe(32)
-
-    document.rows[0].status = '失效'
+    document.rows[0].status = "invalid"
     const output = await saveWorkbook(document)
     const reopened = new ExcelJS.Workbook()
     await reopened.xlsx.load(output)
-    expect(reopened.getWorksheet('站点')?.getCell('B2').value).toBe('失效')
-    expect(reopened.getWorksheet('站点')?.getCell('A2').font.bold).toBe(true)
-    expect(reopened.getWorksheet('说明')?.getCell('A1').value).toBe('保留内容')
+    expect(reopened.getWorksheet("main")?.getCell("B2").value).toBe("invalid")
+    expect(reopened.getWorksheet("main")?.getCell("A2").font.bold).toBe(true)
+    expect(reopened.getWorksheet("extra")?.getCell("A1").value).toBe("keep me")
   })
 
-  it('清除样式后写回不会残留旧字体、填充和对齐', async () => {
+  it("reads and writes the hidden layout worksheet", async () => {
     const source = new ExcelJS.Workbook()
-    const main = source.addWorksheet('站点')
-    main.columns = [{ header: '公益站', key: 'name', width: 20 }]
-    main.addRow({ name: '示例站' })
-    main.getCell('A2').font = { bold: true, color: { argb: 'FFFF0000' } }
-    main.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-    main.getCell('A2').alignment = { horizontal: 'center', wrapText: true }
+    const main = source.addWorksheet("main")
+    main.columns = [{ header: "name", key: "name" }, { header: "url", key: "url" }]
+    main.addRow({ name: "demo", url: "https://example.com" })
+    main.getCell("A2").font = { bold: true, color: { argb: "FFFF0000" } }
+    source.addWorksheet("extra").getCell("A1").value = "keep me"
+    const layout = source.addWorksheet("__newAPIshare_layout")
+    layout.state = "hidden"
+    layout.addRow(["version", "scope", "uid", "field", "direction", "textAlign", "buttonAlign", "buttonFlow", "buttonCount", "gap"])
+    layout.addRow([1, "column", "", "url", "row", "center", "right", "column", 2, 6])
+    layout.addRow([1, "cell", "row-1", "url", "column", "center", "left", "row", 3, 8])
+    const document = await loadWorkbook(await source.xlsx.writeBuffer())
+    expect(document.layouts[columnLayoutKey("url")]).toEqual({ direction: "row", textAlign: "center", buttonGroup: { align: "right", flow: "column", count: 2, gap: 6 } })
+    expect(document.layouts[cellLayoutKey("row-1", "url")]).toEqual({ direction: "column", textAlign: "center", buttonGroup: { align: "left", flow: "row", count: 3, gap: 8 } })
+    document.layouts[columnLayoutKey("url")] = { direction: "column", textAlign: "center", buttonGroup: { align: "center", flow: "row", count: 1, gap: 8 } }
+    const output = await saveWorkbook(document)
+    const reopened = new ExcelJS.Workbook()
+    await reopened.xlsx.load(output)
+    expect(reopened.getWorksheet("__newAPIshare_layout")?.state).toBe("hidden")
+    expect(reopened.getWorksheet("__newAPIshare_layout")?.getCell("H2").value).toBe("row")
+    expect(reopened.getWorksheet("__newAPIshare_layout")?.getCell("I2").value).toBe(1)
+    expect(reopened.getWorksheet("extra")?.getCell("A1").value).toBe("keep me")
+  })
 
+  it("reads and writes main worksheet merge ranges without changing other sheets", async () => {
+    const source = new ExcelJS.Workbook()
+    const main = source.addWorksheet("main")
+    main.addRow(["name", "status", "url"])
+    main.addRow(["demo", "ok", "https://example.com"])
+    main.mergeCells("B2:D2")
+    source.addWorksheet("extra").getCell("A1").value = "keep me"
+    const document = await loadWorkbook(await source.xlsx.writeBuffer())
+    expect(document.merges).toEqual(["B2:D2"])
+    const output = await saveWorkbook(document)
+    const reopened = new ExcelJS.Workbook()
+    await reopened.xlsx.load(output)
+    expect(Object.keys(((reopened.getWorksheet("main") as any)?._merges) ?? {})).toContain("B2")
+    expect(reopened.getWorksheet("main")?.getCell("A2").value).toBe("demo")
+    expect(reopened.getWorksheet("extra")?.getCell("A1").value).toBe("keep me")
+  })
+
+  it("clears old cell styles when style metadata is empty", async () => {
+    const source = new ExcelJS.Workbook()
+    const main = source.addWorksheet("main")
+    main.columns = [{ header: "name", key: "name", width: 20 }]
+    main.addRow({ name: "demo" })
+    main.getCell("A2").font = { bold: true, color: { argb: "FFFF0000" } }
+    main.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } }
+    main.getCell("A2").alignment = { horizontal: "center", wrapText: true }
     const document = await loadWorkbook(await source.xlsx.writeBuffer())
     document.styles = {}
     const output = await saveWorkbook(document)
     const reopened = new ExcelJS.Workbook()
     await reopened.xlsx.load(output)
-    const cell = reopened.getWorksheet('站点')?.getCell('A2')
+    const cell = reopened.getWorksheet("main")?.getCell("A2")
     expect(cell?.font.bold).not.toBe(true)
-    expect(cell?.font.color?.argb).not.toBe('FFFF0000')
-    const fill = cell?.fill as { fgColor?: { argb?: string } } | undefined
-    expect(fill?.fgColor?.argb).not.toBe('FFFFFF00')
-    expect(cell?.alignment?.horizontal).not.toBe('center')
+    expect(cell?.font.color?.argb).not.toBe("FFFF0000")
+    expect((cell?.fill as { fgColor?: { argb?: string } }).fgColor?.argb).not.toBe("FFFFFF00")
+    expect(cell?.alignment?.horizontal).not.toBe("center")
     expect(cell?.alignment?.wrapText).not.toBe(true)
   })
 
-  it('删除末尾行后写回不会重新加载空行', async () => {
+  it("does not reload a deleted trailing row", async () => {
     const source = new ExcelJS.Workbook()
-    const main = source.addWorksheet('站点')
-    main.columns = [{ header: '公益站', key: 'name' }]
-    main.addRow({ name: '第一行' })
-    main.addRow({ name: '第二行' })
+    const main = source.addWorksheet("main")
+    main.columns = [{ header: "name", key: "name" }]
+    main.addRow({ name: "first" })
+    main.addRow({ name: "second" })
     const document = await loadWorkbook(await source.xlsx.writeBuffer())
     document.rows.splice(1, 1)
     const output = await saveWorkbook(document)
     const reopened = new ExcelJS.Workbook()
     await reopened.xlsx.load(output)
     const rows: string[] = []
-    reopened.getWorksheet('站点')?.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) rows.push(String(row.getCell(1).value ?? ''))
-    })
-    expect(rows).toEqual(['第一行'])
+    reopened.getWorksheet("main")?.eachRow((row, rowNumber) => { if (rowNumber > 1) rows.push(String(row.getCell(1).value ?? "")) })
+    expect(rows).toEqual(["first"])
   })
 
-  it('损坏的工作簿给出可识别错误', async () => {
-    await expect(loadWorkbook(new Uint8Array([1, 2, 3]))).rejects.toThrow('XLSX')
+  it("reports a recognizable error for a damaged workbook", async () => {
+    await expect(loadWorkbook(new Uint8Array([1, 2, 3]))).rejects.toThrow("XLSX")
   })
 })

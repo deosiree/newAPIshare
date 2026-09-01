@@ -18,6 +18,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/papaparse": "^5.3.15",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

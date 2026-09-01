@@ -10,11 +10,14 @@ import { cellButtons } from '../lib/data'
 import { HIDDEN_ROW_FIELD, type ColumnDef } from '../fields'
 import { cellStyleFor } from '../lib/data'
 import { cellStyleKey, loadWorkbook, type CellStyle } from '../lib/workbook'
-import { applyCellStylePatch } from '../lib/editOps'
-import { buildColumnWidthsFromState, canReorderRows, moveRowByUid } from '../lib/gridOps'
+import { buildButtonGrid, cellLayoutKey, columnLayoutKey, normalizeCellLayout, resolveCellLayout, type CellLayout } from '../lib/cellLayout'
+import { applyCellStylePatch, copyCellStyle } from '../lib/editOps'
+import { buildColumnWidthsFromState, buildColumnWidthsFromValues, calculateBestColumnWidth, calculateCellContentHeight, canReorderRows, moveRowByUid, normalizeColumnWidth, normalizeRowHeight } from '../lib/gridOps'
+import { resizeRowHeight } from '../lib/resizeOps'
 import EditToolbar from '../components/edit/EditToolbar'
 import ContextMenu from '../components/edit/ContextMenu'
 import FormatPanel from '../components/edit/FormatPanel'
+import { buildMergeRange, hasMergeOverlap, normalizeMergeRanges, parseMergeRange, removeMergeRange, resolveMergeColumnIndexes } from '../lib/mergeOps'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -28,6 +31,8 @@ interface Snap {
   styles: Record<string, CellStyle>
   rowHeights: Record<number, number>
   columnWidths: Record<string, number>
+  layouts: Record<string, CellLayout>
+  merges: string[]
 }
 type MenuItem = { x: number; y: number; field?: string; rowIndex?: number }
 type Change = { name: string; field: string; fieldLabel: string; old: string; value: string }
@@ -43,37 +48,136 @@ const newUid = () =>
     : Math.random().toString(36).slice(2, 10)
 const RULE_COLORS = ['#ef444433', '#f59e0b33', '#22c55e33', '#3b82f633', '#a855f733', '#94a3b833']
 
-/** 原生 JS 单元格渲染器:文本 + 按钮 chip(非 React 组件,由 AG Grid 核心实例化) */
 let CURRENT_BUTTONS: ButtonsMeta = {}
+let CURRENT_LAYOUTS: Record<string, CellLayout> = {}
+
+/** 原生 JS 单元格渲染器:复用浏览态的文字/按钮双层布局。
+ * @param params AG Grid 提供的单元格渲染参数
+ * @returns 无返回值
+ */
 class BtnCellRenderer {
   eGui!: HTMLDivElement
-  init(p: { value?: string; data?: Row; colDef: { field?: string } }) { this.eGui = document.createElement('div'); this.update(p) }
-  refresh(p: { value?: string; data?: Row; colDef: { field?: string } }) { this.update(p); return true }
-  getGui() { return this.eGui }
-  private update(p: { value?: string; data?: Row; colDef: { field?: string } }) {
+
+  /** 初始化单元格渲染器。
+   * @param params AG Grid 提供的单元格渲染参数
+   * @returns 无返回值
+   */
+  init(params: { value?: string; data?: Row; colDef: { field?: string } }): void {
+    this.eGui = document.createElement('div')
+    this.update(params)
+  }
+
+  /** 刷新单元格渲染器内容。
+   * @param params AG Grid 提供的单元格渲染参数
+   * @returns 是否复用当前渲染器
+   */
+  refresh(params: { value?: string; data?: Row; colDef: { field?: string } }): boolean {
+    this.update(params)
+    return true
+  }
+
+  /** 返回 AG Grid 要挂载的根元素。
+   * @returns 单元格渲染根元素
+   */
+  getGui(): HTMLDivElement { return this.eGui }
+
+  /** 按当前布局生成文字区域和按钮组 DOM。
+   * @param params AG Grid 提供的单元格渲染参数
+   * @returns 无返回值
+   */
+  private update(params: { value?: string; data?: Row; colDef: { field?: string } }): void {
     this.eGui.innerHTML = ''
-    const row = p.data
+    const row = params.data
+    const field = params.colDef.field ?? ''
     if (!row) return
-    if (p.value) {
-      const t = document.createElement('span')
-      t.textContent = String(p.value)
-      this.eGui.appendChild(t)
+    const resolved = resolveCellLayout(CURRENT_LAYOUTS, row.uid ?? '', field)
+    const root = document.createElement('div')
+    root.className = 'cell-content-layout cell-content-' + resolved.direction
+    const text = params.value == null ? '' : String(params.value)
+    if (text !== '') {
+      const textElement = document.createElement('span')
+      textElement.className = 'cell-content-text'
+      textElement.textContent = text
+      root.appendChild(textElement)
     }
-    const btns = cellButtons(row, p.colDef.field ?? '', CURRENT_BUTTONS).filter((b) => row[b.field])
-    if (btns.length) {
-      const w = document.createElement('span')
-      w.className = 'btns btns-inline'
-      btns.forEach((b) => {
-        const a = document.createElement('a')
-        a.className = 'mini ck'
-        a.href = row[b.field]
-        a.target = '_blank'
-        a.rel = 'noopener noreferrer'
-        a.textContent = b.label
-        w.appendChild(a)
+    const btns = cellButtons(row, field, CURRENT_BUTTONS).filter((button) => row[button.field])
+    if (btns.length > 0) {
+      const buttonGroup = document.createElement('span')
+      buttonGroup.className = 'cell-content-buttons cell-content-buttons-' + resolved.buttonGroup.align
+      buttonGroup.style.gap = resolved.buttonGroup.gap + 'px'
+      if (resolved.buttonGroup.flow === 'row') buttonGroup.style.gridTemplateColumns = 'repeat(' + resolved.buttonGroup.count + ', max-content)'
+      else buttonGroup.style.gridTemplateRows = 'repeat(' + resolved.buttonGroup.count + ', max-content)'
+      buildButtonGrid(btns, resolved.buttonGroup).forEach(({ item, row: gridRow, column }) => {
+        const link = document.createElement('a')
+        link.className = 'mini ck'
+        link.href = row[item.field]
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = item.label
+        link.style.gridRow = String(gridRow)
+        link.style.gridColumn = String(column)
+        buttonGroup.appendChild(link)
       })
-      this.eGui.appendChild(w)
+      root.appendChild(buttonGroup)
     }
+    this.eGui.appendChild(root)
+  }
+}/** 原生 JS 行号渲染器：同时提供行号显示和独立的行高拖拽手柄。
+ * @param params AG Grid 提供的行号渲染参数
+ * @returns 无返回值
+ */
+interface RowNumberRendererParams {
+  value?: string
+  node?: { data?: Row }
+  onResize?: (event: { event: MouseEvent; node?: { data?: Row } }) => void
+}
+
+class RowNumberRenderer {
+  eGui!: HTMLDivElement
+
+  /** 初始化行号与行高拖拽手柄。
+   * @param params AG Grid 提供的行号渲染参数
+   * @returns 无返回值
+   */
+  init(params: RowNumberRendererParams): void {
+    this.eGui = document.createElement('div')
+    this.update(params)
+  }
+
+  /** 刷新行号显示。
+   * @param params AG Grid 提供的行号渲染参数
+   * @returns 是否复用当前渲染器
+   */
+  refresh(params: RowNumberRendererParams): boolean {
+    this.update(params)
+    return true
+  }
+
+  /** 返回 AG Grid 要挂载的行号渲染根元素。
+   * @returns 行号渲染根元素
+   */
+  getGui(): HTMLDivElement { return this.eGui }
+
+  /** 更新行号文字和底部拖拽区域。
+   * @param params AG Grid 提供的行号渲染参数
+   * @returns 无返回值
+   */
+  private update(params: RowNumberRendererParams): void {
+    this.eGui.className = 'rownum-content'
+    this.eGui.innerHTML = ''
+    const value = document.createElement('span')
+    value.className = 'rownum-value'
+    value.textContent = params.value ?? ''
+    const handle = document.createElement('span')
+    handle.className = 'row-resize-handle'
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      params.onResize?.({ event, node: params.node })
+    })
+    handle.title = '拖拽调整行高'
+    handle.setAttribute('aria-label', '拖拽调整行高')
+    this.eGui.append(value, handle)
   }
 }
 
@@ -110,14 +214,19 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
   const [styles, setStyles] = useState<Record<string, CellStyle>>(data?.styles ?? {})
   const [rowHeights, setRowHeights] = useState<Record<number, number>>(data?.rowHeights ?? {})
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(data?.columnWidths ?? {})
+  const [layouts, setLayouts] = useState<Record<string, CellLayout>>(data?.layouts ?? {})
+  const [merges, setMerges] = useState<string[]>(data?.merges ?? [])
+  const [layoutScope, setLayoutScope] = useState<"cell" | "column">("cell")
   const [msg, setMsg] = useState('就绪 · 修改后请点「保存」')
   const [menu, setMenu] = useState<MenuItem | null>(null)
   const [srv, setSrv] = useState<{ ok: boolean; msg: string }>({ ok: false, msg: '检查本机同步助手…' })
   const [scan, setScan] = useState<{ changes: Change[]; unmatched: string[] } | null>(null)
   const [selectedCol, setSelectedCol] = useState<string | undefined>(undefined)
+  const [focusRevision, setFocusRevision] = useState(0)
   const [fr, setFr] = useState({ open: false, find: '', replace: '', ignoreCase: true })
   const [panel, setPanel] = useState(false)
   const [formatOpen, setFormatOpen] = useState(false)
+  const [formatPainter, setFormatPainter] = useState<CellStyle | null>(null)
   const [xl, setXl] = useState({ watching: false, syncing: false, last_sync: '', last_error: '' })
   const xlTimer = useRef<number | null>(null)
 
@@ -126,11 +235,14 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
   const past = useRef<Snap[]>([])
   const future = useRef<Snap[]>([])
   const pending = useRef<Snap | null>(null)
+  const rowResizeRef = useRef<{ rowUid: string; startY: number; startHeight: number } | null>(null)
+  const lastRowHeightRef = useRef<number | null>(null)
   const clip = useRef<Clip>(null)
   const [hist, setHist] = useState({ u: 0, r: 0 })
-  const cur = useRef<Snap>({ rows, cols: meta, btns: buttons, views, rules, rowH: rowHeight, styles, rowHeights, columnWidths })
-  cur.current = { rows, cols: meta, btns: buttons, views, rules, rowH: rowHeight, styles, rowHeights, columnWidths }
+  const cur = useRef<Snap>({ rows, cols: meta, btns: buttons, views, rules, rowH: rowHeight, styles, rowHeights, columnWidths, layouts, merges })
+  cur.current = { rows, cols: meta, btns: buttons, views, rules, rowH: rowHeight, styles, rowHeights, columnWidths, layouts, merges }
   CURRENT_BUTTONS = buttons
+  CURRENT_LAYOUTS = layouts
 
   /* 异步数据到达后填充编辑器 */
   useEffect(() => {
@@ -144,7 +256,8 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
       setStyles(data.styles ?? {})
       setRowHeights(data.rowHeights ?? {})
       setColumnWidths(data.columnWidths ?? {})
-      cur.current = { rows: data.rows, cols: data.columns, btns: data.buttons ?? {}, views: data.metaAll?.views ?? [], rules: data.metaAll?.rules ?? [], rowH: data.metaAll?.editor?.rowHeight ?? 46, styles: data.styles ?? {}, rowHeights: data.rowHeights ?? {}, columnWidths: data.columnWidths ?? {} }
+      setLayouts(data.layouts ?? {})
+      cur.current = { rows: data.rows, cols: data.columns, btns: data.buttons ?? {}, views: data.metaAll?.views ?? [], rules: data.metaAll?.rules ?? [], rowH: data.metaAll?.editor?.rowHeight ?? 46, styles: data.styles ?? {}, rowHeights: data.rowHeights ?? {}, columnWidths: data.columnWidths ?? {}, layouts: data.layouts ?? {}, merges: data.merges ?? [] }
       past.current = []; future.current = []
       setHist({ u: 0, r: 0 })
     }
@@ -164,11 +277,11 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
     if (past.current.length > 50) past.current.shift()
     future.current = []
     const patch = fn(cur.current)
-    const ns: Snap = { ...cur.current, ...patch, styles: patch.styles ?? cur.current.styles, rowHeights: patch.rowHeights ?? cur.current.rowHeights, columnWidths: patch.columnWidths ?? cur.current.columnWidths }
+    const ns: Snap = { ...cur.current, ...patch, styles: patch.styles ?? cur.current.styles, rowHeights: patch.rowHeights ?? cur.current.rowHeights, columnWidths: patch.columnWidths ?? cur.current.columnWidths, layouts: patch.layouts ?? cur.current.layouts, merges: patch.merges ?? cur.current.merges }
     cur.current = ns
     setRows(ns.rows); setMeta(ns.cols); setButtons(ns.btns)
     setViews(ns.views); setRules(ns.rules); setRowHeight(ns.rowH)
-    setStyles(ns.styles); setRowHeights(ns.rowHeights); setColumnWidths(ns.columnWidths)
+    setStyles(ns.styles); setRowHeights(ns.rowHeights); setColumnWidths(ns.columnWidths); setLayouts(ns.layouts); setMerges(ns.merges)
     pushHist()
   }, [pushHist])
   const undo = useCallback(() => {
@@ -178,7 +291,7 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
     cur.current = s
     setRows(s.rows); setMeta(s.cols); setButtons(s.btns)
     setViews(s.views); setRules(s.rules); setRowHeight(s.rowH)
-    setStyles(s.styles); setRowHeights(s.rowHeights); setColumnWidths(s.columnWidths)
+    setStyles(s.styles); setRowHeights(s.rowHeights); setColumnWidths(s.columnWidths); setLayouts(s.layouts); setMerges(s.merges)
     pushHist()
   }, [pushHist])
   const redo = useCallback(() => {
@@ -188,7 +301,7 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
     cur.current = s
     setRows(s.rows); setMeta(s.cols); setButtons(s.btns)
     setViews(s.views); setRules(s.rules); setRowHeight(s.rowH)
-    setStyles(s.styles); setRowHeights(s.rowHeights); setColumnWidths(s.columnWidths)
+    setStyles(s.styles); setRowHeights(s.rowHeights); setColumnWidths(s.columnWidths); setLayouts(s.layouts); setMerges(s.merges)
     pushHist()
   }, [pushHist])
 
@@ -221,6 +334,249 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
       setMsg("排序或筛选状态下不能拖拽行，请先清除排序和筛选")
     }
   }, [getRowReorderState])
+
+  /** 在自定义行号列底部拖拽调整单行高度，并把结果纳入撤销栈。
+   * @param event AG Grid 行号单元格鼠标事件
+   * @returns 无返回值
+   */
+  const handleRowNumberMouseDown = useCallback((event: any): void => {
+    const mouseEvent = event.event as MouseEvent | undefined
+    const row = event.node?.data as Row | undefined
+    if (!mouseEvent || !row || mouseEvent.button !== 0) return
+    const cell = (mouseEvent.target as HTMLElement | null)?.closest('.ag-cell') as HTMLElement | null
+    if (!cell) return
+    const rect = cell.getBoundingClientRect()
+    if (mouseEvent.clientY < rect.bottom - 7) {
+      notifyRowDragUnavailable()
+      return
+    }
+    const originalIndex = cur.current.rows.findIndex((item) => item.uid === row.uid)
+    if (originalIndex < 0) return
+    mouseEvent.preventDefault()
+    const startHeight = normalizeRowHeight(cur.current.rowHeights[originalIndex + 2] ?? cur.current.rowH)
+    rowResizeRef.current = { rowUid: row.uid, startY: mouseEvent.clientY, startHeight }
+    lastRowHeightRef.current = startHeight
+    const previousCursor = document.body.style.cursor
+    document.body.style.cursor = 'row-resize'
+    const onMove = (moveEvent: MouseEvent): void => {
+      const state = rowResizeRef.current
+      if (!state) return
+      const nextHeight = resizeRowHeight(state.startHeight, moveEvent.clientY - state.startY)
+      lastRowHeightRef.current = nextHeight
+      event.node.setRowHeight(nextHeight)
+      gridRef.current?.onRowHeightChanged()
+    }
+    const onUp = (): void => {
+      const state = rowResizeRef.current
+      const finalHeight = lastRowHeightRef.current
+      rowResizeRef.current = null
+      lastRowHeightRef.current = null
+      document.body.style.cursor = previousCursor
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      const rowIndex = state ? cur.current.rows.findIndex((item) => item.uid === state.rowUid) : -1
+      if (state && finalHeight != null && rowIndex >= 0 && finalHeight !== state.startHeight) {
+        mutate((snapshot) => ({ ...snapshot, rowHeights: { ...snapshot.rowHeights, [rowIndex + 2]: finalHeight } }))
+        setMsg('行高已更新，保存后写回 XLSX')
+      }
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [mutate, notifyRowDragUnavailable])
+
+  /** 获取字段当前在网格中的像素宽度，供最适合行高估算使用。
+   * @param field 字段名
+   * @returns 当前字段宽度（像素）
+   */
+  const getFieldWidth = (field: string): number => {
+    const column = (gridRef.current as (GridApi & { getColumn?: (key: string) => { getActualWidth?: () => number } | null }) | null)?.getColumn?.(field)
+    const actualWidth = column?.getActualWidth?.()
+    if (typeof actualWidth === 'number' && Number.isFinite(actualWidth)) return actualWidth
+    return cur.current.cols.find((item) => item.field === field)?.width ?? 150
+  }
+
+  /** 计算指定行需要的最小高度，文字换行和按钮栅格均纳入估算。
+   * @param row 目标数据行
+   * @returns 能容纳该行所有业务列内容的合法高度
+   */
+  const calculateRowFitHeight = (row: Row): number => {
+    const heights = meta.filter((column) => !column.hidden && column.field !== 'uid').map((column) => {
+      const style = styles[cellStyleKey(row.uid, column.field)] ?? {}
+      const buttonsAtCell = cellButtons(row, column.field, buttons).filter((button) => row[button.field])
+      return calculateCellContentHeight({
+        text: row[column.field] ?? '',
+        buttonCount: buttonsAtCell.length,
+        layout: resolveCellLayout(layouts, row.uid, column.field),
+        columnWidth: getFieldWidth(column.field),
+        wrapText: style.wrapText ?? !!column.wrap,
+      })
+    })
+    return Math.max(rowHeight, ...heights)
+  }
+
+  /** 将选中行或全部原始行调整为最适合的行高，并一次性写入撤销栈。
+   * @returns 无返回值
+   */
+  const fitRows = (): void => {
+    const api = gridRef.current
+    const selectedRows = api?.getSelectedNodes?.().map((node) => node.data as Row).filter(Boolean) ?? []
+    const targetRows = selectedRows.length > 0 ? selectedRows : cur.current.rows
+    const nextHeights = { ...cur.current.rowHeights }
+    targetRows.forEach((row) => {
+      const rowIndex = cur.current.rows.findIndex((item) => item.uid === row.uid)
+      if (rowIndex >= 0) nextHeights[rowIndex + 2] = calculateRowFitHeight(row)
+    })
+    if (!targetRows.length) { setMsg('没有可调整的行'); return }
+    mutate((snapshot) => ({ ...snapshot, rowHeights: nextHeights }))
+    api?.resetRowHeights?.()
+    setMsg(selectedRows.length > 0 ? '已调整选中行的最适合行高，保存后写回 XLSX' : '已调整全部行的最适合行高，保存后写回 XLSX')
+  }
+
+  /** 将选中列、当前列或全部可见列调整为最适合宽度，并同步网格与 Excel 宽度。
+   * @returns 无返回值
+   */
+  const fitColumns = (): void => {
+    const api = gridRef.current
+    const selectedFields = selectedCol ? [selectedCol] : focusRef.current.field ? [focusRef.current.field] : []
+    const targetFields = selectedFields.length > 0 ? selectedFields : meta.filter((column) => !column.hidden && column.field !== 'uid').map((column) => column.field)
+    const widthValues: Record<string, number> = {}
+    targetFields.forEach((field) => {
+      const cells = cur.current.rows.map((row) => {
+        const buttonsAtCell = cellButtons(row, field, buttons).filter((button) => row[button.field])
+        return {
+          text: row[field] ?? '',
+          buttonLabels: buttonsAtCell.map((button) => button.label),
+          layout: resolveCellLayout(layouts, row.uid, field),
+        }
+      })
+      widthValues[field] = calculateBestColumnWidth(cells)
+    })
+    const hasHidden = cur.current.rows.some((row) => 'hidden' in row)
+    const nextWidths = buildColumnWidthsFromValues(cur.current.cols, widthValues, cur.current.columnWidths, hasHidden)
+    const entries = Object.entries(widthValues).map(([field, width]) => ({ key: field, newWidth: width }))
+    const gridWithSizing = api as (GridApi & { setColumnWidths?: (values: { key: string; newWidth: number }[], finished?: boolean) => void }) | null
+    if (entries.length > 0) {
+      if (gridWithSizing?.setColumnWidths) gridWithSizing.setColumnWidths(entries, false)
+      else api?.applyColumnState({ state: entries.map((entry) => ({ colId: entry.key, width: entry.newWidth })) })
+    }
+    mutate((snapshot) => ({
+      ...snapshot,
+      cols: snapshot.cols.map((column) => widthValues[column.field] == null ? column : { ...column, width: widthValues[column.field] }),
+      columnWidths: nextWidths,
+    }))
+    setMsg(targetFields.length === 1 ? '已调整当前列的最适合列宽，保存后写回 XLSX' : '已调整可见列的最适合列宽，保存后写回 XLSX')
+  }
+
+  /** 在列宽拖拽结束时记录最终宽度，避免拖动过程产生大量历史记录。
+   * @param event AG Grid 列宽变化事件
+   * @returns 无返回值
+   */
+  const handleColumnResized = useCallback((event: any): void => {
+    if (event.finished === false) return
+    const state = gridRef.current?.getColumnState?.() ?? []
+    const hasHidden = cur.current.rows.some((row) => 'hidden' in row)
+    const nextWidths = buildColumnWidthsFromState(cur.current.cols, state, cur.current.columnWidths, hasHidden)
+    const widthByField = new Map(state.filter((item: any) => typeof item.width === 'number').map((item: any) => [item.colId, item.width]))
+    mutate((snapshot) => ({
+      ...snapshot,
+      cols: snapshot.cols.map((column) => {
+        const width = widthByField.get(column.field)
+        return typeof width === 'number' ? { ...column, width: normalizeColumnWidth(width) } : column
+      }),
+      columnWidths: nextWidths,
+    }))
+    setMsg('列宽已更新，保存后写回 XLSX')
+  }, [mutate])
+
+  /** 读取当前网格的横向同组选区，并转换为 Excel 合并地址。
+   * @returns 可合并的 Excel 地址；选区不符合约束时返回 undefined
+   */
+  const getSelectedMergeRange = (): string | undefined => {
+    const api = gridRef.current as (GridApi & { getCellRanges?: () => any[] }) | null
+    const range = api?.getCellRanges?.()?.[0] as any
+    if (!range) return undefined
+    const startRow = range.startRow?.rowIndex ?? range.endRow?.rowIndex
+    const endRow = range.endRow?.rowIndex ?? range.startRow?.rowIndex
+    if (startRow == null || endRow == null || startRow !== endRow) return undefined
+    const fields = (Array.isArray(range.columns) ? range.columns : [])
+      .map((column: any) => column?.getColDef?.()?.field ?? column?.colDef?.field ?? column?.field ?? (typeof column === "string" ? column : undefined))
+      .filter((field: string | undefined): field is string => !!field && field !== "__seq" && field !== "uid")
+    const orderedFields = meta.filter((column) => column.field !== "uid").map((column) => column.field)
+    const startField = range.startColumn?.getColDef?.()?.field ?? range.startColumn?.colDef?.field ?? range.startColumn?.field ?? (typeof range.startColumn === "string" ? range.startColumn : undefined)
+    const endField = range.endColumn?.getColDef?.()?.field ?? range.endColumn?.colDef?.field ?? range.endColumn?.field ?? (typeof range.endColumn === "string" ? range.endColumn : undefined)
+    const indexes = resolveMergeColumnIndexes(fields, orderedFields, startField, endField)
+    if (indexes.length < 2 || indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return undefined
+    const hasHidden = cur.current.rows.some((row) => 'hidden' in row)
+    return buildMergeRange({
+      startRow: startRow + 1,
+      endRow: endRow + 1,
+      startColumn: indexes[0] + 1 + (hasHidden ? 1 : 0),
+      endColumn: indexes[indexes.length - 1] + 1 + (hasHidden ? 1 : 0),
+    })
+  }
+
+  /** 合并当前同一行的连续业务单元格，并将合并范围纳入撤销栈。
+   * @returns 无返回值
+   */
+  const mergeSelectedCells = (): void => {
+    if (!canReorderRows(getRowReorderState())) {
+      alert('排序或筛选状态下不能合并单元格，请先清除排序和筛选')
+      return
+    }
+    const range = getSelectedMergeRange()
+    if (!range) {
+      alert('请选择同一行内至少两个连续的业务单元格')
+      return
+    }
+    if (hasMergeOverlap(cur.current.merges, range)) {
+      alert('选区与已有合并范围重叠，请先取消原合并')
+      return
+    }
+    mutate((snapshot) => ({ ...snapshot, merges: normalizeMergeRanges([...snapshot.merges, range]) }))
+    setMsg('单元格已合并，保存后写回 XLSX')
+  }
+
+  /** 取消包含当前焦点单元格的 Excel 合并范围。
+   * @returns 无返回值
+   */
+  const unmergeFocusedCell = (): void => {
+    if (!canReorderRows(getRowReorderState())) {
+      alert('排序或筛选状态下不能取消合并，请先清除排序和筛选')
+      return
+    }
+    const rowIndex = focusRef.current.rowIndex
+    const field = focusRef.current.field
+    if (rowIndex == null || !field) { alert('请先点击需要取消合并的单元格'); return }
+    const fieldIndex = meta.filter((column) => column.field !== 'uid').findIndex((column) => column.field === field)
+    if (fieldIndex < 0) return
+    const hasHidden = cur.current.rows.some((row) => 'hidden' in row)
+    const rowNumber = rowIndex + 2
+    const columnNumber = fieldIndex + 1 + (hasHidden ? 1 : 0)
+    const target = parseMergeRange(buildMergeRange({ startRow: rowIndex + 1, endRow: rowIndex + 1, startColumn: columnNumber, endColumn: columnNumber + 1 }))
+    const existing = cur.current.merges.find((value) => {
+      const range = parseMergeRange(value)
+      return !!range && !!target && range.startRow <= rowNumber && range.endRow >= rowNumber && range.startColumn <= columnNumber && range.endColumn >= columnNumber
+    })
+    if (!existing) { setMsg('当前单元格没有合并范围'); return }
+    mutate((snapshot) => ({ ...snapshot, merges: removeMergeRange(snapshot.merges, existing) }))
+    setMsg('已取消单元格合并，保存后写回 XLSX')
+  }
+
+  /** 将格式刷复制的样式应用到目标单元格，并在使用后关闭格式刷。
+   * @param rowIndex 目标行索引
+   * @param field 目标字段名
+   * @returns 无返回值
+   */
+  const applyFormatPainter = (rowIndex: number, field: string): void => {
+    if (!formatPainter) return
+    const source = copyCellStyle(formatPainter)
+    mutate((snapshot) => ({
+      ...snapshot,
+      styles: applyCellStylePatch(snapshot.styles, snapshot.rows, { rowIndex, field }, source),
+    }))
+    setFormatPainter(null)
+    setMsg('格式已复制到目标单元格')
+  }
 
   const colDefs: ColDef[] = useMemo(() => {
     const dataCol = (c: ColumnDef): ColDef => ({
@@ -255,12 +611,14 @@ export default function Edit({ data, unlocked }: { data: SiteData | null; unlock
         rowDrag: () => canReorderRows(getRowReorderState()),
         valueGetter: (p) => String((p.node?.rowIndex ?? 0) + 1),
         onCellClicked: (e) => { e.node?.setSelected(!e.node.isSelected()) },
-        onCellMouseDown: notifyRowDragUnavailable,
+        onCellMouseDown: handleRowNumberMouseDown,
         cellClass: "rownum-cell",
+        cellRenderer: RowNumberRenderer,
+        cellRendererParams: { onResize: handleRowNumberMouseDown },
       },
       ...meta.filter((c) => c.field !== 'uid').map(dataCol),
     ]
-  }, [meta, buttons, buttonCols, selectedCol, rules, styles, getRowReorderState, notifyRowDragUnavailable])
+  }, [meta, buttons, buttonCols, selectedCol, rules, styles, getRowReorderState, handleRowNumberMouseDown])
 
   /* ---------- 行与列 ---------- */
   /** 按选中行数插入空白行，并记录为一次可撤销事务。
@@ -337,6 +695,40 @@ const delCol = (field?: string) => {
    */
   const focusedOrSelected = () => focusRef.current.rowIndex != null ? focusRef.current.field : selectedCol
 
+  const focusedField = focusedOrSelected()
+  const focusedRowIndex = focusRef.current.rowIndex
+  const focusedRow = focusedRowIndex != null ? rows[focusedRowIndex] : undefined
+  const focusedButtons = useMemo(() => {
+    const field = focusedField
+    if (!field) return []
+    const row = layoutScope === 'cell'
+      ? focusedRow
+      : rows.find((item) => cellButtons(item, field, buttons).some((button) => item[button.field]))
+    if (!row) return []
+    return cellButtons(row, field, buttons).filter((button) => row[button.field])
+  }, [focusedField, focusedRow, rows, buttons, layoutScope, focusRevision])
+  const activeLayout = useMemo(() => {
+    const field = focusedField
+    if (!field) return undefined
+    return resolveCellLayout(layouts, layoutScope === 'cell' ? (focusedRow?.uid ?? '') : '', field)
+  }, [focusedField, focusedRow, layouts, layoutScope, focusRevision])
+
+  /** 更新当前单元格或当前列默认布局，并记录为可撤销事务。
+   * @param next 下一个布局
+   * @returns 无返回值
+   */
+  const updateFocusedLayout = (next: CellLayout): void => {
+    const field = focusedOrSelected()
+    if (!field) { alert('请先点击目标列头或单元格'); return }
+    const rowIndex = focusRef.current.rowIndex
+    const row = rowIndex != null ? rows[rowIndex] : undefined
+    if (layoutScope === 'cell' && !row) { alert('当前单元格作用域需要先选择单元格'); return }
+    const key = layoutScope === 'cell' ? cellLayoutKey(row!.uid, field) : columnLayoutKey(field)
+    const normalized = normalizeCellLayout(next)
+    mutate((state) => ({ ...state, layouts: { ...state.layouts, [key]: normalized } }))
+    setMsg(layoutScope === 'cell' ? '当前单元格布局已更新，保存后写回 XLSX' : '当前列默认布局已更新，保存后写回 XLSX')
+  }
+
   /** 将样式补丁写入当前单元格或整列，并同步兼容的列级元数据。
    * @param patch 要写入的单元格样式补丁
    * @returns 无返回值
@@ -400,7 +792,7 @@ const delCol = (field?: string) => {
     if (!field) return {}
     const row = focusRef.current.rowIndex != null ? rows[focusRef.current.rowIndex] : rows[0]
     return row ? styles[cellStyleKey(row.uid, field)] ?? {} : {}
-  }, [rows, selectedCol, styles])
+  }, [rows, selectedCol, styles, focusRevision])
 
   /** 设置当前列的浏览态渲染类型。
  * @param t 列渲染类型
@@ -541,7 +933,7 @@ const importXlsx = (file: File): void => {
         const cols = document.columns.filter((column) => column.field !== 'uid')
         if (!document.rows.length) { alert('表格为空'); return }
         if (!confirm(`导入 ${document.rows.length} 行数据，将覆盖当前表格(可撤销)。继续?`)) return
-        mutate((s) => ({ ...s, rows: document.rows, cols, styles: document.styles, rowHeights: document.rowHeights, columnWidths: document.columnWidths }))
+        mutate((s) => ({ ...s, rows: document.rows, cols, styles: document.styles, rowHeights: document.rowHeights, columnWidths: document.columnWidths, layouts: document.layouts, merges: document.merges }))
         setMsg(`已导入 ${document.rows.length} 行，样式已保留，记得点「保存」`)
       } catch (error) {
         alert('导入失败: ' + (error instanceof Error ? error.message : String(error)))
@@ -580,7 +972,7 @@ const importXlsx = (file: File): void => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           rows: snapshot.rows, columns: cols, updated: new Date().toISOString().slice(0, 10), buttons: snapshot.btns,
-          extras: { views: snapshot.views, rules: snapshot.rules, editor: { rowHeight: snapshot.rowH }, styles: snapshot.styles, rowHeights: snapshot.rowHeights, columnWidths: nextWidths },
+          extras: { views: snapshot.views, rules: snapshot.rules, editor: { rowHeight: snapshot.rowH }, styles: snapshot.styles, rowHeights: snapshot.rowHeights, columnWidths: nextWidths, layouts: snapshot.layouts, merges: snapshot.merges },
         }),
       })
       const res = await r.json()
@@ -666,7 +1058,7 @@ const toggleExcel = async () => {
         pollXl()
       }
     } catch (e) {
-      alert('Excel 联动失败:' + e + '\n请确认同步助手已启动(双击 tools/启动同步工具.bat)')
+      alert('Excel 启动失败:' + e + '\n确认同步助手已启动(双击 tools/启动同步工具.bat)')
     }
   }
   useEffect(() => () => { if (xlTimer.current) clearInterval(xlTimer.current) }, [])
@@ -676,6 +1068,16 @@ const toggleExcel = async () => {
     document.addEventListener('contextmenu', preventNativeMenu)
     return () => document.removeEventListener('contextmenu', preventNativeMenu)
   }, [])
+
+  /** 在编辑状态或布局变化后刷新网格渲染，并重新计算已保存行高。
+   * @returns 无返回值
+   */
+  useEffect(() => {
+    const api = gridRef.current
+    if (!api) return
+    api.refreshCells({ force: true })
+    api.resetRowHeights()
+  }, [styles, layouts, rowHeights, columnWidths, meta, rules, focusRevision])
 
   /* ---------- 全局效果:同步助手健康检查 ---------- */
   useEffect(() => {
@@ -988,8 +1390,11 @@ const applyView = (v: ViewPreset) => {
           <DropItem onClick={() => toggleStyle('italic')}>斜体(切换)</DropItem>
           <DropItem onClick={() => toggleStyle('wrapText')}>自动换行(切换)</DropItem>
           <hr />
-          <DropItem onClick={() => { const v = meta.filter((c) => !c.hidden && c.field !== 'uid'); gridRef.current?.autoSizeColumns(v.map((c) => c.field)); setMsg('列宽已适应内容') }}>列宽: 适应内容</DropItem>
-          <DropItem onClick={() => { mutate((s) => ({ ...s, cols: s.cols.map((c) => ({ ...c, width: undefined })) })); setMsg('列宽已重置,保存后记忆') }}>列宽: 重置默认</DropItem>
+          <DropItem onClick={fitRows}>最适合的行高</DropItem>
+          <DropItem onClick={fitColumns}>最适合的列宽</DropItem>
+          <DropItem onClick={() => { setFormatPainter(copyCellStyle(focusedStyle)); setMsg('格式刷已启用，请点击目标单元格') }}>格式刷（点击后选择目标单元格）</DropItem>
+          <DropItem onClick={mergeSelectedCells}>合并单元格</DropItem>
+          <DropItem onClick={unmergeFocusedCell}>取消合并</DropItem>
           <hr />
           <div className="drop-note">行高</div>
           <DropItem onClick={() => { mutate((s) => ({ ...s, rowH: 34 })); setMsg('行高:紧凑(保存后记忆)') }}>紧凑</DropItem>
@@ -1071,23 +1476,34 @@ const applyView = (v: ViewPreset) => {
           columnDefs={colDefs}
           getRowId={(params) => params.data.uid}
           rowDragManaged
-          getRowHeight={(params) => rowHeights[(params.node.rowIndex ?? 0) + 2] ?? rowHeight}
+          getRowHeight={(params) => {
+            const row = params.node.data as Row | undefined
+            const originalIndex = row ? cur.current.rows.findIndex((item) => item.uid === row.uid) : -1
+            return originalIndex >= 0 ? rowHeights[originalIndex + 2] ?? rowHeight : rowHeight
+          }}
           defaultColDef={{ resizable: true, sortable: false, filter: true, minWidth: 60 }}
           rowHeight={rowHeight}
           rowSelection={{ mode: 'multiRow', checkboxes: true, headerCheckbox: true }}
+          cellSelection
+          onColumnResized={handleColumnResized}
           onCellValueChanged={onCellValueChanged}
           onCellEditingStarted={onCellEditingStarted}
           onCellClicked={(e) => {
+            const f = (e.colDef as { field?: string } | undefined)?.field
+            if (formatPainter && f && f !== '__seq' && e.rowIndex != null) {
+              applyFormatPainter(e.rowIndex, f)
+              return
+            }
             if (e.colDef.field === '__seq') { e.node?.setSelected(!e.node.isSelected()) }
             else {
-              const f = (e.colDef as { field?: string } | undefined)?.field
               if (f) setSelectedCol(f)
               focusRef.current = { field: f, rowIndex: e.rowIndex ?? undefined }
+              setFocusRevision((value) => value + 1)
             }
           }}
           onColumnHeaderClicked={(e) => {
             const f = (e.column as unknown as { getColDef?: () => { field?: string } } | undefined)?.getColDef?.()?.field
-            if (f) { focusRef.current = { field: f, rowIndex: undefined }; setSelectedCol((prev) => (prev === f ? undefined : f)) }
+            if (f) { focusRef.current = { field: f, rowIndex: undefined }; setSelectedCol((prev) => (prev === f ? undefined : f)); setFocusRevision((value) => value + 1) }
           }}
           onCellFocused={(e) => {
             const field = (e.column as unknown as { getColDef?: () => { field?: string } } | undefined)?.getColDef?.()?.field
@@ -1171,6 +1587,11 @@ const applyView = (v: ViewPreset) => {
         onToggle={toggleStyle}
         onColor={setFontColor}
         onFillColor={setFillColor}
+        layout={activeLayout}
+        layoutButtons={focusedButtons}
+        layoutScope={layoutScope}
+        onLayoutScopeChange={setLayoutScope}
+        onLayoutChange={updateFocusedLayout}
       />
 
       <footer className="foot">

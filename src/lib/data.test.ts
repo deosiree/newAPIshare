@@ -27,3 +27,10 @@ describe('cellStyleFor', () => {
     expect(cellStyleFor({ uid: 'row-1' }, 'name', {})).toEqual({})
   })
 })
+
+
+describe('cellStyleFor partial styles', () => {
+  it('does not emit empty CSS values for unset formatting', () => {
+    expect(cellStyleFor({ uid: 'row-1' }, 'name', { 'row-1|name': { fillColor: '#123456' } })).toEqual({ backgroundColor: '#123456' })
+  })
+})

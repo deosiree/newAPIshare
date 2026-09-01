@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import type { Row, SiteData } from '../lib/data'
 import type { ColumnDef } from '../fields'
 import { cellButtons, cellStyleFor, isRowHidden } from '../lib/data'
+import CellContentLayout from '../components/CellContentLayout'
+import { resolveCellLayout } from '../lib/cellLayout'
 
 /** 将状态文本归类为公开页筛选桶。
  * @param s 状态文本
@@ -153,14 +155,14 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                   if (c.type === 'name') {
                     return (
                       <td key={c.field} className="stick nw" style={cellStyle}>
-                        <span className="sname">{r.name}</span>
-                        {btns.length > 0 && (
-                          <span className="btns">
-                            {btns.map((b) => (
-                              <a key={b.label} className="mini reg" href={r[b.field]} target="_blank" rel="noopener noreferrer">{b.label}</a>
-                            ))}
-                          </span>
-                        )}
+                        <CellContentLayout
+                          text={r.name}
+                          buttons={btns}
+                          layout={resolveCellLayout(data.layouts, r.uid, c.field)}
+                          textClassName="sname"
+                          buttonClassName="mini reg"
+                          buttonHref={(button) => r[button.field]}
+                        />
                       </td>
                     )
                   }
@@ -180,16 +182,14 @@ export default function Browse({ data, unlocked }: { data: SiteData | null; unlo
                   if (!v && btns.length === 0) return <td key={c.field} style={cellStyle} />
                   return (
                     <td key={c.field} className={[wcls, c.hs ? 'hs' : ''].join(' ')} style={cellStyle}>
-                      {v && (
-                        <span className={String(v).length > 90 ? 'clamp3' : ''} title={String(v).length > 90 ? v : undefined}>{v}</span>
-                      )}
-                      {btns.length > 0 && (
-                        <span className="btns">
-                          {btns.map((b) => (
-                            <a key={b.label} className="mini ck" href={r[b.field]} target="_blank" rel="noopener noreferrer">{b.label}</a>
-                          ))}
-                        </span>
-                      )}
+                      <CellContentLayout
+                        text={v}
+                        buttons={btns}
+                        layout={resolveCellLayout(data.layouts, r.uid, c.field)}
+                        textClassName={String(v).length > 90 ? 'clamp3' : undefined}
+                        textTitle={String(v).length > 90 ? String(v) : undefined}
+                        buttonHref={(button) => r[button.field]}
+                      />
                     </td>
                   )
                 })}

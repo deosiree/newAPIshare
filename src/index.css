@@ -98,6 +98,18 @@ td.stick .btns{display:flex; gap:5px; margin-top:4px; white-space:nowrap}
 .mini.ck{border:1px solid var(--accent); color:var(--accent); background:var(--accent-weak)}
 /* AG Grid 编辑态:按钮与文本同行,避免固定行高裁切 */
 .btns-inline{display:inline-flex; gap:5px; margin-left:8px; vertical-align:middle}
+.cell-content-layout{min-width:0; max-width:100%; min-height:28px; padding:2px 0; overflow:visible;}
+.cell-content-column{display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:6px;}
+.cell-content-row{display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:8px;}
+.cell-content-text{display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:inherit; overflow-wrap:anywhere; text-align:center;}
+.cell-content-buttons{display:grid; width:max-content; max-width:100%; align-items:center; overflow:visible;}
+.cell-content-buttons-left{justify-self:start; align-self:flex-start;}
+.cell-content-buttons-center{justify-self:center; align-self:center;}
+.cell-content-buttons-right{justify-self:end; align-self:flex-end;}
+.cell-content-column .cell-content-buttons-left{align-self:flex-start;}
+.cell-content-column .cell-content-buttons-center{align-self:center;}
+.cell-content-column .cell-content-buttons-right{align-self:flex-end;}
+.cell-content-buttons .mini{min-width:0; white-space:nowrap;}
 .ag-dark .ag-cell .mini.ck{--ag-accent-color: var(--accent)}
 .empty{padding:50px 0; text-align:center; color:var(--muted); font-size:13.5px}
 /* ---- 底部 ---- */
@@ -152,10 +164,16 @@ footer.foot a{color:var(--accent); text-decoration:none}
 .rule-del{padding:2px 8px; font-size:11.5px}
 .grow{flex:1}
 /* 列选中 / 行号 */
-.cell-colsel{background:var(--hover)!important}
+.cell-colsel{box-shadow:inset 0 0 0 1px var(--accent)}
 .head-colsel{color:var(--accent)!important; box-shadow:inset 0 -2px 0 var(--accent)}
-.rownum-cell{color:var(--muted); text-align:center; cursor:pointer; font-size:12px}
+.rownum-cell{position:relative;overflow:visible!important;color:var(--muted);text-align:center;cursor:pointer;font-size:12px;padding:0!important}
 .rownum-cell:hover{color:var(--accent)}
+.rownum-cell .ag-cell-wrapper,.rownum-cell .ag-cell-value{position:relative;width:100%;height:100%;overflow:visible!important}
+.rownum-content{position:relative;display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:visible}
+.rownum-value{pointer-events:none}
+.row-resize-handle{position:absolute;left:-2px;right:-2px;bottom:-4px;height:9px;z-index:20;cursor:row-resize;border-radius:4px;background:transparent;touch-action:none}
+.row-resize-handle:hover,.row-resize-handle:focus-visible{background:var(--accent);opacity:.65}
+
 /* 字段面板抽屉 */
 .fdrawer{
   position:fixed; right:0; top:0; bottom:0; width:330px; z-index:70;
@@ -238,3 +256,31 @@ footer.foot a{color:var(--accent); text-decoration:none}
 .mfoot .grow{flex:1}
 [hidden]{display:none!important}
 
+
+/* ---- 单元格双层布局编辑器 ---- */
+.cell-layout-editor{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:10px;min-width:0}
+.layout-editor-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--text);font-size:12.5px}
+.layout-editor-head label,.layout-editor-controls label{display:flex;align-items:center;gap:6px;min-width:0}
+.layout-editor-head select,.layout-editor-controls select,.layout-editor-controls input{min-width:0;max-width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);font-size:12px}
+.layout-editor-hint{color:var(--muted);font-size:11.5px;line-height:1.4}
+.layout-preview-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.layout-preview{display:flex;gap:8px;align-items:center;justify-content:center;min-height:82px;padding:10px;border:1px dashed var(--line);border-radius:9px;background:var(--bg);overflow:hidden}
+.layout-preview.cell-content-column{flex-direction:column}
+.layout-preview.cell-content-row{display:grid;grid-template-columns:minmax(0,1fr) auto}
+.layout-zone{min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);font-size:11.5px;text-align:center;cursor:grab;user-select:none}
+.layout-zone:active{cursor:grabbing}
+.layout-text-zone{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layout-button-zone{display:flex;align-items:center;gap:7px;min-width:0;max-width:100%}
+.layout-preview-buttons{min-width:0;max-width:100%;align-items:center;overflow:hidden}
+.layout-preview-buttons .mini{white-space:nowrap}
+.layout-drop-zones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.layout-drop-zone{padding:7px 6px;border:1px dashed var(--accent);border-radius:7px;color:var(--accent);font-size:11px;text-align:center;cursor:copy;transition:background .15s ease,transform .15s ease}
+.layout-drop-zone:hover,.layout-drop-zone:focus{background:var(--accent-weak);transform:translateY(-1px)}
+.layout-editor-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.layout-editor-controls label{justify-content:space-between;color:var(--muted);font-size:11.5px}
+.layout-editor-controls input{width:72px}
+@media (max-width:520px){.layout-drop-zones,.layout-editor-controls{grid-template-columns:1fr}.layout-preview.cell-content-row{grid-template-columns:minmax(0,1fr) auto}.format-panel{top:8px;right:8px;width:calc(100vw - 16px);max-height:calc(100vh - 16px)}}
+
+/* 编辑态单元格内容不能被按钮组自身高度裁切 */
+.ag-cell-value:has(.cell-content-layout), .ag-cell-wrapper:has(.cell-content-layout){overflow:visible; min-height:100%;}
+.ag-cell:has(.cell-content-layout){overflow:visible;}
